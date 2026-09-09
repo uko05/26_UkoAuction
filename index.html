@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="うーこの部屋の各サイトで出品されたアイテムを横断的に一覧・入札できるオークションサイトです。">
+
+    <title>うーこオークション - うーこの部屋</title>
+    <link rel="stylesheet" href="style.css?v=1">
+
+    <!-- Favicon -->
+    <link rel="icon" href="https://cdn.jsdelivr.net/gh/uko05/99_SharedImage@main/00_common/favicon_io/favicon.ico" type="image/x-icon">
+    <link rel="icon" sizes="16x16" href="https://cdn.jsdelivr.net/gh/uko05/99_SharedImage@main/00_common/favicon_io/favicon-16x16.png">
+    <link rel="icon" sizes="32x32" href="https://cdn.jsdelivr.net/gh/uko05/99_SharedImage@main/00_common/favicon_io/favicon-32x32.png">
+    <link rel="apple-touch-icon" href="https://cdn.jsdelivr.net/gh/uko05/99_SharedImage@main/00_common/favicon_io/apple-touch-icon.png">
+    <link rel="icon" sizes="192x192" href="https://cdn.jsdelivr.net/gh/uko05/99_SharedImage@main/00_common/favicon_io/android-chrome-192x192.png">
+    <link rel="icon" sizes="512x512" href="https://cdn.jsdelivr.net/gh/uko05/99_SharedImage@main/00_common/favicon_io/android-chrome-512x512.png">
+</head>
+<body>
+    <header>
+        <div class="header-topbar">
+            <div class="lang-switch">
+                <label><input type="radio" name="lang" value="ja" checked> JP</label>
+                <label><input type="radio" name="lang" value="en"> EN</label>
+            </div>
+        </div>
+        <h1 data-i18n="pageTitle">うーこオークション</h1>
+        <p class="header-sub" data-i18n="headerSub">うーこの部屋の各サイトで出品されたアイテムを一覧・入札できます</p>
+    </header>
+
+    <main>
+        <div id="auction-gate-message" class="gate-message" style="display:none;" data-i18n="gateMessage">
+            動作確認中のため、現在は一部のユーザーのみ利用できます。
+        </div>
+        <div id="auction-list" class="auction-list"></div>
+    </main>
+
+    <div class="toast" id="toast" style="display:none;"></div>
+
+    <!-- 入札ポップ -->
+    <div id="auction-bid-modal" class="col-modal" style="display:none;">
+      <div class="col-modal-backdrop"></div>
+      <div class="col-modal-content">
+        <button id="auction-bid-close" class="col-modal-close" aria-label="close">×</button>
+        <p class="bid-modal-title" id="auction-bid-name"></p>
+        <p class="bid-modal-prompt" id="auction-bid-prompt"></p>
+        <input type="number" id="auction-bid-input" class="auction-bid-input" step="1">
+        <button type="button" id="auction-bid-submit" class="auction-bid-submit-btn" style="margin-top:14px;">入札する</button>
+      </div>
+    </div>
+
+    <!-- サムネイル拡大表示 -->
+    <div id="auction-lightbox" class="auction-lightbox">
+      <img id="auction-lightbox-img" src="" alt="">
+    </div>
+
+    <footer class="site-footer">
+        <a href="https://x.com/uko_dayo_" target="_blank" rel="noopener">
+            <img src="https://cdn.jsdelivr.net/gh/uko05/99_SharedImage@main/00_common/footer_icon/twitter_image.png" alt="Twitter" class="twitter-icon">
+        </a>
+        <a href="https://t.co/0jAcAV2GJv" target="_blank" rel="noopener">
+            <img src="https://cdn.jsdelivr.net/gh/uko05/99_SharedImage@main/00_common/footer_icon/discord_image.png" alt="Discord" class="twitter-icon">
+        </a>
+        <span class="sad_label">＜友達ください…</span>
+        <span id="uko-account-status-slot"></span>
+    </footer>
+
+    <span id="site-version" class="site-version">v1.0</span>
+
+    <script type="module" src="script.js"></script>
+    <script src="https://uko05.github.io/TopPage00/shared/sidebar.js"></script>
+    <script type="module" src="https://uko05.github.io/24_AccountCenter/account-status.js"></script>
+</body>
+</html>

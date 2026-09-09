@@ -1,0 +1,317 @@
+@font-face {
+  font-family: 'MihoyoZenZero';
+  src: url('font/mihoyo-zenzero.ttf') format('truetype');
+}
+
+:root {
+  --bg:      #f4f4f9;
+  --surface: #ffffff;
+  --surface2:#eeeeee;
+  --accent:  #ffcc00;
+  --text:    #333333;
+  --muted:   #888888;
+  --border:  #dddddd;
+  --gold:    #aa8800;
+  --radius:  12px;
+  --font:    'MihoyoZenZero', 'Hiragino Kaku Gothic ProN', 'Meiryo', sans-serif;
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+.site-version {
+  position: fixed;
+  right: 8px;
+  bottom: 6px;
+  font-size: 11px;
+  color: rgba(0,0,0,0.2);
+  pointer-events: none;
+  z-index: 1;
+}
+
+body {
+  font-family: var(--font);
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  padding-bottom: 40px;
+}
+
+header {
+  background: var(--surface);
+  border-bottom: 2px solid var(--accent);
+  padding: 40px 16px 16px;
+  text-align: center;
+}
+
+.header-topbar {
+  display: flex;
+  justify-content: flex-end;
+  padding: 0 4px;
+}
+
+.lang-switch {
+  display: flex;
+  gap: 8px;
+  font-size: 0.8rem;
+}
+.lang-switch label { display: flex; align-items: center; gap: 3px; cursor: pointer; }
+
+header h1 {
+  margin-top: 8px;
+  font-size: 1.3rem;
+  font-weight: bold;
+}
+
+.header-sub {
+  margin-top: 6px;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+main {
+  flex: 1;
+  max-width: 640px;
+  width: 100%;
+  margin: 0 auto;
+  padding: 20px 16px;
+}
+
+.gate-message {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 20px;
+  text-align: center;
+  color: var(--muted);
+  font-size: 0.85rem;
+  margin-bottom: 16px;
+}
+
+/* ===== 出品一覧 ===== */
+.auction-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.auction-empty {
+  text-align: center;
+  color: var(--muted);
+  font-size: 0.85rem;
+  padding: 24px 0;
+}
+
+.auction-card {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 10px;
+}
+
+.auction-card-img {
+  width: 56px;
+  height: 94px;
+  object-fit: cover;
+  border-radius: 4px;
+  flex-shrink: 0;
+  cursor: zoom-in;
+}
+
+.auction-card-info { flex: 1; min-width: 0; }
+
+.auction-card-site {
+  display: inline-block;
+  font-size: 0.68rem;
+  color: var(--gold);
+  background: rgba(170, 136, 0, 0.12);
+  border-radius: 999px;
+  padding: 2px 8px;
+  margin-bottom: 4px;
+}
+
+.auction-card-name {
+  font-size: 0.9rem;
+  font-weight: bold;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.auction-card-price {
+  font-size: 0.8rem;
+  color: var(--gold);
+  font-weight: bold;
+  margin-top: 3px;
+}
+
+.auction-card-buynow {
+  font-size: 0.72rem;
+  color: #e0562f;
+  font-weight: bold;
+}
+
+.auction-card-time {
+  font-size: 0.7rem;
+  color: var(--muted);
+}
+
+.auction-card-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.auction-card-mine {
+  font-size: 0.72rem;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.auction-action-btn {
+  width: 96px;
+  padding: 8px;
+  border: none;
+  border-radius: 8px;
+  font-family: var(--font);
+  font-weight: bold;
+  font-size: 0.75rem;
+  cursor: pointer;
+  color: #4a2c00;
+  background: linear-gradient(180deg, #ffe066, #ff9800);
+  transition: transform 0.15s ease;
+}
+.auction-action-btn:hover { transform: translateY(-1px); }
+.auction-action-btn:active { transform: translateY(0); }
+
+.auction-buynow-btn {
+  color: #fff;
+  background: linear-gradient(180deg, #ff9472, #e0562f);
+}
+
+/* ===== モーダル(入札) ===== */
+.col-modal {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+.col-modal-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.65);
+}
+.col-modal-content {
+  position: relative;
+  background: var(--surface);
+  border-radius: var(--radius);
+  padding: 28px 20px 22px;
+  width: min(88vw, 420px);
+  text-align: center;
+}
+.col-modal-close {
+  position: absolute;
+  top: 8px;
+  right: 10px;
+  background: none;
+  border: none;
+  font-size: 1.2rem;
+  color: var(--muted);
+  cursor: pointer;
+}
+.col-modal-close:hover { color: var(--text); }
+
+.bid-modal-title {
+  font-size: 1rem;
+  font-weight: bold;
+  margin-bottom: 8px;
+}
+.bid-modal-prompt {
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+.auction-bid-input {
+  width: 100%;
+  padding: 10px;
+  font-size: 1rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  text-align: center;
+  margin-top: 10px;
+  font-family: var(--font);
+  box-sizing: border-box;
+}
+.auction-bid-submit-btn {
+  font-family: var(--font);
+  font-size: 0.9rem;
+  font-weight: bold;
+  padding: 10px 24px;
+  border: none;
+  border-radius: 999px;
+  background: var(--accent);
+  color: #4a3600;
+  cursor: pointer;
+}
+
+/* ===== サムネイル拡大 ===== */
+.auction-lightbox {
+  position: fixed;
+  inset: 0;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0,0,0,0.8);
+  z-index: 2000;
+  cursor: zoom-out;
+}
+.auction-lightbox.visible { display: flex; }
+.auction-lightbox img {
+  max-width: 90vw;
+  max-height: 90vh;
+  border-radius: 8px;
+}
+
+.site-footer {
+  text-align: center;
+  padding: 26px 16px 40px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 10px;
+}
+
+.twitter-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 8px;
+  object-fit: cover;
+}
+
+.sad_label {
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+.toast {
+  position: fixed;
+  left: 50%;
+  bottom: 24px;
+  transform: translateX(-50%);
+  max-width: 90%;
+  background: rgba(0,0,0,0.82);
+  color: #fff;
+  padding: 10px 18px;
+  border-radius: 999px;
+  font-size: 0.85rem;
+  z-index: 2000;
+  text-align: center;
+}
+.toast.toast-error { background: rgba(180,30,30,0.9); }
