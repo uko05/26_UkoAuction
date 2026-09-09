@@ -65,8 +65,8 @@ function siteLabel(siteKey) {
 // ガチャ券は08_UPoint側で50UP固定(2026-09時点)。開始=券の5分の1、即決=券の5倍という
 // 比率で運用する方針のため、ここは連動する自動計算ではなく固定値(出品側の14_GenshinOmikuji/
 // auction.jsと同じ値。片方を変更したらもう片方も手動で合わせること)。
-const AUCTION_START_PRICE = 10;
-const AUCTION_BUY_NOW_PRICE = 250;
+const AUCTION_START_PRICE = 25;
+const AUCTION_BUY_NOW_PRICE = 500;
 
 // ===== i18n =====
 const i18n = {
