@@ -1,11 +1,27 @@
 // script.js
 // うーこオークション: うーこの部屋の各サイトから出品されたアイテム(ukoMarketListings)を
 // 横断的に一覧・入札・即決購入できるサイト。出品自体は各サイト側(例: 14_GenshinOmikuji)で行う。
-import { db } from './firebaseConfig.js';
+import { app, db } from './firebaseConfig.js';
 import {
   collection, doc, getDoc, onSnapshot, runTransaction,
   query, where, orderBy, limit, increment,
 } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
+import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
+
+// ===== ログイン状態(入札・即決購入をアカウント登録者限定にするため。
+// 一覧の閲覧自体は未登録でも可能にしたいので、そちらでは使わないこと) =====
+const auth = getAuth(app);
+let authUid = null;
+const authReady = new Promise((resolve) => {
+  onAuthStateChanged(auth, (user) => {
+    authUid = user ? user.uid : null;
+    resolve();
+  });
+});
+async function isLoggedIn() {
+  await authReady;
+  return !!authUid;
+}
 
 // ===== ユーザーID(uko05.github.io配下の全サイト共通のlocalStorageキー) =====
 const LS_USER_ID = 'genshinOmikuji_userId';
@@ -74,6 +90,7 @@ const i18n = {
     bidInvalid: '入札額は整数で入力してください。',
     bidNoPoints: 'UPが足りません。',
     bidOwn: '自分の出品には入札できません。',
+    loginRequired: '入札・即決購入にはアカウント登録（無料）が必要です。登録・ログインしてから利用してください。',
     bidEnded: 'このオークションは終了しています。',
     bidFailed: '入札に失敗しました。時間をおいて再度お試しください。',
     bidDone: '入札しました。',
@@ -102,6 +119,7 @@ const i18n = {
     bidInvalid: 'Please enter a whole number.',
     bidNoPoints: 'Not enough UP.',
     bidOwn: "You can't bid on your own listing.",
+    loginRequired: 'Bidding and Buy Now require a free account. Please register and log in first.',
     bidEnded: 'This auction has ended.',
     bidFailed: 'Failed to place bid. Please try again later.',
     bidDone: 'Bid placed!',
@@ -426,14 +444,20 @@ function renderAuctionList(listings) {
       bidBtn.type = 'button';
       bidBtn.className = 'auction-action-btn';
       bidBtn.textContent = s().bidBtn;
-      bidBtn.addEventListener('click', () => openBidModal(listing));
+      bidBtn.addEventListener('click', async () => {
+        if (!(await isLoggedIn())) { showToast(s().loginRequired, true); return; }
+        openBidModal(listing);
+      });
       actions.appendChild(bidBtn);
 
       const buyBtn = document.createElement('button');
       buyBtn.type = 'button';
       buyBtn.className = 'auction-action-btn auction-buynow-btn';
       buyBtn.textContent = s().buyNowBtn;
-      buyBtn.addEventListener('click', () => buyNow(listing));
+      buyBtn.addEventListener('click', async () => {
+        if (!(await isLoggedIn())) { showToast(s().loginRequired, true); return; }
+        buyNow(listing);
+      });
       actions.appendChild(buyBtn);
     }
     card.appendChild(actions);
@@ -448,7 +472,10 @@ function renderAuctionList(listings) {
     const wanted = listings.find((l) => l.id === wantedListingId);
     if (wanted && wanted.sellerId !== myUserId) {
       deepLinkHandled = true;
-      openBidModal(wanted);
+      isLoggedIn().then((ok) => {
+        if (ok) openBidModal(wanted);
+        else showToast(s().loginRequired, true);
+      });
     }
   }
 }
