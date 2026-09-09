@@ -338,10 +338,11 @@ function closeBidModal() {
 
 async function submitBid() {
   if (!bidTargetListing) return;
+  const target = bidTargetListing; // closeBidModal()がbidTargetListingをnullにするため先に確保しておく
   const input = document.getElementById('auction-bid-input');
   const amount = Math.floor(Number(input?.value));
   closeBidModal();
-  await placeBid(bidTargetListing, amount);
+  await placeBid(target, amount);
 }
 
 function openLightbox(url) {
