@@ -499,6 +499,12 @@ function initAuctionList() {
     renderAuctionList(isAuctionDebugger ? latestListings : []);
   });
 
+  // 残り時間はFirestoreの更新が無い限り再描画されないため、定期的に描き直して
+  // 「残り○分」の表示を更新する(期限切れの精算トリガーもここで一緒に効く)
+  setInterval(() => {
+    renderAuctionList(isAuctionDebugger ? latestListings : []);
+  }, 30000);
+
   const bidClose = document.getElementById('auction-bid-close');
   if (bidClose) bidClose.addEventListener('click', closeBidModal);
   const bidBackdrop = document.querySelector('#auction-bid-modal .col-modal-backdrop');
