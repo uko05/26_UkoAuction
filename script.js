@@ -36,6 +36,11 @@ function getUserId() {
   return id;
 }
 
+// うーこポイント交換所(08_UPoint)ミッション「オークションを落札しよう」の達成フラグキー。
+// 入札で競り落とした場合(settleListing)・即決購入した場合(buyNow)のどちらでも立てる。
+// UP付与自体はしない(08_UPoint側の「受け取る」操作で加算する二段階方式、他ミッションと同じ)。
+const AUCTION_WIN_MISSION_CLAIM_KEY = 'omikujiAuctionWin';
+
 // 動作確認中は管理者/デバッガーロールの人にだけ一覧を見せる(一般ユーザーには
 // ゲートメッセージのみ表示)。確認が終わったら削除してよい。
 let isAuctionDebugger = false;
@@ -182,7 +187,10 @@ async function settleListing(listingId) {
         const sellerRef = doc(db, 'omikujiUsers', d.sellerId);
         const [winnerSnap, sellerSnap] = await Promise.all([tx.get(winnerRef), tx.get(sellerRef)]);
         if (winnerSnap.exists()) {
-          tx.update(winnerRef, { [d.returnField]: increment(1) });
+          tx.update(winnerRef, {
+            [d.returnField]: increment(1),
+            [`missionsAchieved.${AUCTION_WIN_MISSION_CLAIM_KEY}`]: true,
+          });
         }
         if (sellerSnap.exists()) {
           tx.update(sellerRef, { ukoPoints: increment(d.currentBid) });
@@ -296,6 +304,7 @@ async function buyNow(listing) {
       tx.update(myRef, {
         ukoPoints: increment(-d.buyNowPrice),
         [d.returnField]: increment(1),
+        [`missionsAchieved.${AUCTION_WIN_MISSION_CLAIM_KEY}`]: true,
       });
       if (sellerSnap.exists()) {
         tx.update(sellerRef, { ukoPoints: increment(d.buyNowPrice) });
