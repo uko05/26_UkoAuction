@@ -78,17 +78,6 @@ main {
   padding: 20px 16px;
 }
 
-.gate-message {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 20px;
-  text-align: center;
-  color: var(--muted);
-  font-size: 0.85rem;
-  margin-bottom: 16px;
-}
-
 /* ===== 出品一覧 ===== */
 .auction-list {
   display: flex;

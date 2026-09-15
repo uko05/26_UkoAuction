@@ -3,7 +3,7 @@
 // 横断的に一覧・入札・即決購入できるサイト。出品自体は各サイト側(例: 14_GenshinOmikuji)で行う。
 import { app, db } from './firebaseConfig.js';
 import {
-  collection, doc, getDoc, onSnapshot, runTransaction,
+  collection, doc, onSnapshot, runTransaction,
   query, where, orderBy, limit, increment,
 } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
 import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
@@ -41,21 +41,6 @@ function getUserId() {
 // UP付与自体はしない(08_UPoint側の「受け取る」操作で加算する二段階方式、他ミッションと同じ)。
 const AUCTION_WIN_MISSION_CLAIM_KEY = 'omikujiAuctionWin';
 
-// 動作確認中は管理者/デバッガーロールの人にだけ一覧を見せる(一般ユーザーには
-// ゲートメッセージのみ表示)。確認が終わったら削除してよい。
-let isAuctionDebugger = false;
-async function loadAuctionDebuggerRole() {
-  try {
-    const snap = await getDoc(doc(db, 'sharedUserRoles', getUserId()));
-    if (snap.exists()) {
-      const d = snap.data();
-      isAuctionDebugger = d.role === 'admin' || d.role === 'debugger' || !!d.debugOmikuji;
-    }
-  } catch (e) {
-    console.warn('[auction] ロール取得に失敗:', e);
-  }
-}
-
 // ===== どのサイトのアイテムかを表す表示名(siteKey→ラベル)。
 // 将来別サイトも出品するようになったらここにキーを足すだけでよい。 =====
 const SITE_LABELS = {
@@ -78,7 +63,6 @@ const i18n = {
   ja: {
     pageTitle: 'うーこオークション',
     headerSub: 'うーこの部屋の各サイトで出品されたアイテムを一覧・入札できます',
-    gateMessage: '動作確認中のため、現在は一部のユーザーのみ利用できます。',
     empty: '出品されているアイテムはありません',
     startLabel: '開始',
     currentLabel: '現在',
@@ -107,7 +91,6 @@ const i18n = {
   en: {
     pageTitle: 'Uko Auction',
     headerSub: 'Browse and bid on items listed across うーこの部屋 sites',
-    gateMessage: 'This feature is currently limited to a subset of users while under testing.',
     empty: 'No items are currently listed',
     startLabel: 'Start',
     currentLabel: 'Current',
@@ -146,7 +129,7 @@ function applyLang(lang) {
     if (typeof val === 'string') el.textContent = val;
   });
   localStorage.setItem('lang', lang);
-  renderAuctionList(isAuctionDebugger ? latestListings : []);
+  renderAuctionList(latestListings);
 }
 
 function initLangSwitch() {
@@ -377,13 +360,9 @@ let deepLinkHandled = false;
 
 function renderAuctionList(listings) {
   const listEl = document.getElementById('auction-list');
-  const gateEl = document.getElementById('auction-gate-message');
   if (!listEl) return;
   const myUserId = getUserId();
   listEl.innerHTML = '';
-
-  if (gateEl) gateEl.style.display = isAuctionDebugger ? 'none' : 'block';
-  if (!isAuctionDebugger) return;
 
   if (listings.length === 0) {
     const p = document.createElement('p');
@@ -500,18 +479,13 @@ function initAuctionList() {
   );
   onSnapshot(q, (snap) => {
     latestListings = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-    renderAuctionList(isAuctionDebugger ? latestListings : []);
+    renderAuctionList(latestListings);
   }, (err) => console.error('[auction] listen failed', err));
-
-  // ロール判定は非同期なので、判明した時点で改めて描画し直す
-  loadAuctionDebuggerRole().then(() => {
-    renderAuctionList(isAuctionDebugger ? latestListings : []);
-  });
 
   // 残り時間はFirestoreの更新が無い限り再描画されないため、定期的に描き直して
   // 「残り○分」の表示を更新する(期限切れの精算トリガーもここで一緒に効く)
   setInterval(() => {
-    renderAuctionList(isAuctionDebugger ? latestListings : []);
+    renderAuctionList(latestListings);
   }, 30000);
 
   const bidClose = document.getElementById('auction-bid-close');
