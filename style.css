@@ -78,6 +78,31 @@ main {
   padding: 20px 16px;
 }
 
+/* ===== 並べ替え ===== */
+.auction-sort-row {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.auction-sort-label {
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+
+.auction-sort-select {
+  font-family: var(--font);
+  font-size: 0.8rem;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 6px 10px;
+  cursor: pointer;
+}
+
 /* ===== 出品一覧 ===== */
 .auction-list {
   display: flex;

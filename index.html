@@ -29,6 +29,16 @@
     </header>
 
     <main>
+        <div class="auction-sort-row">
+          <label for="auction-sort-select" class="auction-sort-label" data-i18n="sortLabel">並べ替え</label>
+          <select id="auction-sort-select" class="auction-sort-select">
+            <option value="endingSoon" data-i18n="sortEndingSoon">残り時間が短い順</option>
+            <option value="newest" data-i18n="sortNewest">新着順</option>
+            <option value="priceLow" data-i18n="sortPriceLow">価格が安い順</option>
+            <option value="priceHigh" data-i18n="sortPriceHigh">価格が高い順</option>
+            <option value="bidCount" data-i18n="sortBidCount">入札件数が多い順</option>
+          </select>
+        </div>
         <div id="auction-list" class="auction-list"></div>
     </main>
 

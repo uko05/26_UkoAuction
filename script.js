@@ -96,6 +96,12 @@ const i18n = {
     statusWon: '落札しました！',
     statusLost: '落札できませんでした',
     statusUnsold: '流札',
+    sortLabel: '並べ替え',
+    sortEndingSoon: '残り時間が短い順',
+    sortNewest: '新着順',
+    sortPriceLow: '価格が安い順',
+    sortPriceHigh: '価格が高い順',
+    sortBidCount: '入札件数が多い順',
   },
   en: {
     pageTitle: 'Uko Auction',
@@ -133,6 +139,12 @@ const i18n = {
     statusWon: 'You won it!',
     statusLost: "You didn't win this one",
     statusUnsold: 'Unsold',
+    sortLabel: 'Sort',
+    sortEndingSoon: 'Ending soon',
+    sortNewest: 'Newest',
+    sortPriceLow: 'Price: low to high',
+    sortPriceHigh: 'Price: high to low',
+    sortBidCount: 'Most bids',
   },
 };
 function currentLang() {
@@ -260,6 +272,7 @@ async function placeBid(listing, amount) {
         currentBid: amount,
         currentBidderId: myUserId,
         currentBidderName: '',
+        bidCount: increment(1),
       });
     });
     showToast(s().bidDone, false);
@@ -518,10 +531,51 @@ function fmtTimeLeft(endsAt) {
 let latestListings = [];
 let deepLinkHandled = false;
 
-function renderAuctionList(listings) {
+// ===== 並べ替え =====
+const AUCTION_SORT_KEY = 'ukoAuction_sortMode';
+function getSortMode() {
+  return localStorage.getItem(AUCTION_SORT_KEY) || 'endingSoon';
+}
+function effectivePrice(listing) {
+  return listing.currentBid > 0 ? listing.currentBid : listing.startPrice;
+}
+function sortListings(listings) {
+  const sorted = listings.slice();
+  switch (getSortMode()) {
+    case 'newest':
+      sorted.sort((a, b) => (b.createdAt?.toMillis?.() || 0) - (a.createdAt?.toMillis?.() || 0));
+      break;
+    case 'priceLow':
+      sorted.sort((a, b) => effectivePrice(a) - effectivePrice(b));
+      break;
+    case 'priceHigh':
+      sorted.sort((a, b) => effectivePrice(b) - effectivePrice(a));
+      break;
+    case 'bidCount':
+      sorted.sort((a, b) => (b.bidCount || 0) - (a.bidCount || 0));
+      break;
+    case 'endingSoon':
+    default:
+      sorted.sort((a, b) => (a.endsAt?.toMillis?.() || 0) - (b.endsAt?.toMillis?.() || 0));
+      break;
+  }
+  return sorted;
+}
+function initSortSelect() {
+  const select = document.getElementById('auction-sort-select');
+  if (!select) return;
+  select.value = getSortMode();
+  select.addEventListener('change', () => {
+    localStorage.setItem(AUCTION_SORT_KEY, select.value);
+    renderAuctionList(latestListings);
+  });
+}
+
+function renderAuctionList(rawListings) {
   const listEl = document.getElementById('auction-list');
   if (!listEl) return;
   const myUserId = getUserId();
+  const listings = sortListings(rawListings);
   listEl.innerHTML = '';
 
   if (listings.length === 0) {
@@ -678,6 +732,7 @@ function initAuctionList() {
   if (myBidsBackdrop) myBidsBackdrop.addEventListener('click', closeMyBidsModal);
 
   initMyBidsTracking();
+  initSortSelect();
 }
 
 initLangSwitch();
