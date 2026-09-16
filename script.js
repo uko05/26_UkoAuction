@@ -224,13 +224,18 @@ async function placeBid(listing, amount) {
       const escrowNeeded = isSameBidder ? (amount - prevBid) : amount;
       if (myPoints < escrowNeeded) throw new Error('NO_POINTS');
 
-      tx.update(myRef, { ukoPoints: increment(-escrowNeeded) });
+      // Firestoreのトランザクションは「読み取りは全部書き込みより先」という制約があるため、
+      // 前の入札者への返金判定に必要な読み取りも、書き込みを始める前に済ませておく。
+      let prevRef = null;
+      let prevExists = false;
       if (prevBidderId && !isSameBidder) {
-        const prevRef = doc(db, 'omikujiUsers', prevBidderId);
-        const prevSnap = await tx.get(prevRef);
-        if (prevSnap.exists()) {
-          tx.update(prevRef, { ukoPoints: increment(prevBid) });
-        }
+        prevRef = doc(db, 'omikujiUsers', prevBidderId);
+        prevExists = (await tx.get(prevRef)).exists();
+      }
+
+      tx.update(myRef, { ukoPoints: increment(-escrowNeeded) });
+      if (prevRef && prevExists) {
+        tx.update(prevRef, { ukoPoints: increment(prevBid) });
       }
 
       tx.update(listingRef, {
