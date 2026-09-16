@@ -4,7 +4,7 @@
 import { app, db } from './firebaseConfig.js';
 import {
   collection, doc, onSnapshot, runTransaction,
-  query, where, orderBy, limit, increment, serverTimestamp,
+  query, where, orderBy, limit, increment, serverTimestamp, arrayUnion,
 } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
 import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
 
@@ -87,6 +87,15 @@ const i18n = {
     buyNowNoPoints: 'UPが足りません。',
     buyNowFailed: '購入に失敗しました。時間をおいて再度お試しください。',
     buyNowDone: '購入しました！',
+    myBidsBtn: '自分の入札',
+    myBidsEmpty: 'まだ入札した商品はありません',
+    badgeWinning: '入札中',
+    badgeOutbid: '更新あり',
+    statusWinning: '入札中（最高額）',
+    statusOutbid: '更新されました（他の人が上回っています）',
+    statusWon: '落札しました！',
+    statusLost: '落札できませんでした',
+    statusUnsold: '流札',
   },
   en: {
     pageTitle: 'Uko Auction',
@@ -115,6 +124,15 @@ const i18n = {
     buyNowNoPoints: 'Not enough UP.',
     buyNowFailed: 'Purchase failed. Please try again later.',
     buyNowDone: 'Purchased!',
+    myBidsBtn: 'My Bids',
+    myBidsEmpty: "You haven't bid on anything yet",
+    badgeWinning: 'Winning',
+    badgeOutbid: 'Outbid',
+    statusWinning: 'Winning (highest bid)',
+    statusOutbid: "Outbid (someone else's bid is higher)",
+    statusWon: 'You won it!',
+    statusLost: "You didn't win this one",
+    statusUnsold: 'Unsold',
   },
 };
 function currentLang() {
@@ -233,7 +251,7 @@ async function placeBid(listing, amount) {
         prevExists = (await tx.get(prevRef)).exists();
       }
 
-      tx.update(myRef, { ukoPoints: increment(-escrowNeeded) });
+      tx.update(myRef, { ukoPoints: increment(-escrowNeeded), myBids: arrayUnion(listing.id) });
       if (prevRef && prevExists) {
         tx.update(prevRef, { ukoPoints: increment(prevBid) });
       }
@@ -350,6 +368,143 @@ function openLightbox(url) {
   lightbox.classList.add('visible');
 }
 
+// ===== 自分の入札トラッキング(ヤフオク的な「入札中/更新されました」表示) =====
+// 入札の度にomikujiUsers/{自分}.myBidsへ出品IDをarrayUnionで貯めていき、それぞれの
+// 出品を個別購読してリアルタイムに「勝ってる/負けてる/落札した/できなかった」を追う。
+// (一覧側のクエリはactiveな出品しか取ってこないため、終了済みの結果を知るには
+// 個別購読が必要)
+let myBidListingIds = [];
+const myBidListingsData = new Map(); // listingId -> 最新ドキュメント(未取得ならエントリ無し)
+const myBidListenerUnsubs = new Map(); // listingId -> unsubscribe関数
+let myBidsModalOpen = false;
+
+function myBidStatus(data, myUserId) {
+  if (!data) return null;
+  if (data.status === 'active') return data.currentBidderId === myUserId ? 'winning' : 'outbid';
+  if (data.status === 'sold') return data.soldTo === myUserId ? 'won' : 'lost';
+  return 'unsold';
+}
+
+function myBidStatusLabel(status) {
+  const map = {
+    winning: s().statusWinning, outbid: s().statusOutbid,
+    won: s().statusWon, lost: s().statusLost, unsold: s().statusUnsold,
+  };
+  return map[status] || '';
+}
+
+function syncMyBidListeners() {
+  const wanted = new Set(myBidListingIds);
+
+  for (const [id, unsub] of myBidListenerUnsubs) {
+    if (!wanted.has(id)) {
+      unsub();
+      myBidListenerUnsubs.delete(id);
+      myBidListingsData.delete(id);
+    }
+  }
+
+  wanted.forEach((id) => {
+    if (myBidListenerUnsubs.has(id)) return;
+    const unsub = onSnapshot(doc(db, 'ukoMarketListings', id), (snap) => {
+      if (snap.exists()) myBidListingsData.set(id, { id, ...snap.data() });
+      else myBidListingsData.delete(id);
+      updateMyBidsBadge();
+      renderAuctionList(latestListings);
+      if (myBidsModalOpen) renderMyBidsList();
+    }, (err) => console.error('[auction] my-bid listen failed', id, err));
+    myBidListenerUnsubs.set(id, unsub);
+  });
+}
+
+function initMyBidsTracking() {
+  const myUserId = getUserId();
+  onSnapshot(doc(db, 'omikujiUsers', myUserId), (snap) => {
+    myBidListingIds = snap.exists() ? (snap.data().myBids || []) : [];
+    syncMyBidListeners();
+    updateMyBidsBadge();
+    if (myBidsModalOpen) renderMyBidsList();
+  }, (err) => console.error('[auction] myBids listen failed', err));
+}
+
+function updateMyBidsBadge() {
+  const myUserId = getUserId();
+  const badgeEl = document.getElementById('auction-mybids-badge');
+  if (!badgeEl) return;
+  let outbidCount = 0;
+  myBidListingsData.forEach((data) => {
+    if (myBidStatus(data, myUserId) === 'outbid') outbidCount++;
+  });
+  if (outbidCount > 0) {
+    badgeEl.textContent = outbidCount > 9 ? '9+' : String(outbidCount);
+    badgeEl.style.display = 'inline-flex';
+  } else {
+    badgeEl.style.display = 'none';
+  }
+}
+
+function openMyBidsModal() {
+  myBidsModalOpen = true;
+  renderMyBidsList();
+  const modal = document.getElementById('auction-mybids-modal');
+  if (modal) modal.style.display = 'flex';
+}
+function closeMyBidsModal() {
+  myBidsModalOpen = false;
+  const modal = document.getElementById('auction-mybids-modal');
+  if (modal) modal.style.display = 'none';
+}
+
+function renderMyBidsList() {
+  const listEl = document.getElementById('auction-mybids-list');
+  if (!listEl) return;
+  const myUserId = getUserId();
+  listEl.innerHTML = '';
+
+  if (myBidListingIds.length === 0) {
+    const p = document.createElement('p');
+    p.className = 'auction-empty';
+    p.textContent = s().myBidsEmpty;
+    listEl.appendChild(p);
+    return;
+  }
+
+  // 新しく入札したものほど配列の後ろに追加されるので、逆順にして新しい順に見せる
+  myBidListingIds.slice().reverse().forEach((id) => {
+    const data = myBidListingsData.get(id);
+    const row = document.createElement('div');
+    row.className = 'auction-mybids-item';
+
+    if (!data) {
+      row.innerHTML = `<div class="auction-mybids-info"><div class="auction-mybids-name">…</div></div>`;
+      listEl.appendChild(row);
+      return;
+    }
+
+    const status = myBidStatus(data, myUserId);
+    const priceText = data.status === 'active'
+      ? `${s().currentLabel} ${data.currentBid > 0 ? data.currentBid : data.startPrice}UP`
+      : `${data.soldPrice ?? ''}UP`;
+
+    row.innerHTML = `
+      <img src="${data.itemImageUrl || ''}" alt="" class="auction-mybids-thumb">
+      <div class="auction-mybids-info">
+        <div class="auction-mybids-name">${data.itemName || ''}</div>
+        <div class="auction-mybids-status auction-mybids-status-${status}">${myBidStatusLabel(status)}</div>
+        <div class="auction-mybids-price">${priceText}</div>
+      </div>
+    `;
+    if (status === 'outbid' && data.status === 'active') {
+      row.classList.add('auction-mybids-item-clickable');
+      row.addEventListener('click', () => {
+        closeMyBidsModal();
+        openBidModal(data);
+      });
+    }
+    listEl.appendChild(row);
+  });
+}
+
 // ===== 一覧描画 =====
 function fmtTimeLeft(endsAt) {
   const ms = endsAt.toMillis() - Date.now();
@@ -400,6 +555,18 @@ function renderAuctionList(listings) {
     siteEl.className = 'auction-card-site';
     siteEl.textContent = siteLabel(listing.siteKey);
     info.appendChild(siteEl);
+
+    if (myBidListingIds.includes(listing.id)) {
+      // 個別購読がまだ来ていない間は一覧側(latestListings)のデータで代用する
+      const trackedData = myBidListingsData.get(listing.id) || listing;
+      const myStatus = myBidStatus(trackedData, myUserId);
+      if (myStatus === 'winning' || myStatus === 'outbid') {
+        const statusEl = document.createElement('span');
+        statusEl.className = `auction-card-mystatus auction-card-mystatus-${myStatus}`;
+        statusEl.textContent = myStatus === 'winning' ? s().badgeWinning : s().badgeOutbid;
+        info.appendChild(statusEl);
+      }
+    }
 
     const name = document.createElement('div');
     name.className = 'auction-card-name';
@@ -502,6 +669,15 @@ function initAuctionList() {
 
   const lightbox = document.getElementById('auction-lightbox');
   if (lightbox) lightbox.addEventListener('click', () => lightbox.classList.remove('visible'));
+
+  const myBidsBtn = document.getElementById('auction-mybids-btn');
+  if (myBidsBtn) myBidsBtn.addEventListener('click', openMyBidsModal);
+  const myBidsClose = document.getElementById('auction-mybids-close');
+  if (myBidsClose) myBidsClose.addEventListener('click', closeMyBidsModal);
+  const myBidsBackdrop = document.querySelector('#auction-mybids-modal .col-modal-backdrop');
+  if (myBidsBackdrop) myBidsBackdrop.addEventListener('click', closeMyBidsModal);
+
+  initMyBidsTracking();
 }
 
 initLangSwitch();

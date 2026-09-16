@@ -51,6 +51,27 @@
       <img id="auction-lightbox-img" src="" alt="">
     </div>
 
+    <!-- 自分の入札一覧ポップ -->
+    <div id="auction-mybids-modal" class="col-modal" style="display:none;">
+      <div class="col-modal-backdrop"></div>
+      <div class="col-modal-content auction-mybids-content">
+        <button id="auction-mybids-close" class="col-modal-close" aria-label="close">×</button>
+        <p class="bid-modal-title" data-i18n="myBidsBtn">自分の入札</p>
+        <div id="auction-mybids-list" class="auction-mybids-list"></div>
+      </div>
+    </div>
+
+    <!-- 固定フッター: 自分の入札(バッジは「更新されました」件数) -->
+    <div class="auction-fixed-footer">
+      <button type="button" id="auction-mybids-btn" class="auction-mybids-fab">
+        <span class="auction-mybids-fab-icon-wrap">
+          <span class="auction-mybids-fab-icon">📋</span>
+          <span id="auction-mybids-badge" class="footer-badge" style="display:none;">0</span>
+        </span>
+        <span data-i18n="myBidsBtn">自分の入札</span>
+      </button>
+    </div>
+
     <footer class="site-footer">
         <a href="https://x.com/uko_dayo_" target="_blank" rel="noopener">
             <img src="https://cdn.jsdelivr.net/gh/uko05/99_SharedImage@main/00_common/footer_icon/twitter_image.png" alt="Twitter" class="twitter-icon">

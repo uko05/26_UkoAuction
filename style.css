@@ -35,7 +35,7 @@ body {
   min-height: 100vh;
   display: flex;
   flex-direction: column;
-  padding-bottom: 40px;
+  padding-bottom: calc(40px + 64px + env(safe-area-inset-bottom, 0px)); /* 固定フッター(自分の入札)の分を確保 */
 }
 
 header {
@@ -121,6 +121,24 @@ main {
   border-radius: 999px;
   padding: 2px 8px;
   margin-bottom: 4px;
+}
+
+.auction-card-mystatus {
+  display: inline-block;
+  font-size: 0.66rem;
+  font-weight: bold;
+  border-radius: 999px;
+  padding: 2px 8px;
+  margin-bottom: 4px;
+  margin-left: 4px;
+}
+.auction-card-mystatus-winning {
+  color: #1b6e3c;
+  background: rgba(46, 160, 90, 0.14);
+}
+.auction-card-mystatus-outbid {
+  color: #b3261e;
+  background: rgba(211, 47, 47, 0.12);
 }
 
 .auction-card-name {
@@ -266,6 +284,121 @@ main {
   max-width: 90vw;
   max-height: 90vh;
   border-radius: 8px;
+}
+
+/* ===== 固定フッター(自分の入札) ===== */
+.auction-fixed-footer {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  justify-content: center;
+  background: var(--surface);
+  border-top: 1px solid var(--border);
+  box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.12);
+  padding-bottom: env(safe-area-inset-bottom, 0);
+  z-index: 900;
+}
+
+.auction-mybids-fab {
+  width: 100%;
+  max-width: 640px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 10px;
+  background: none;
+  border: none;
+  font-family: var(--font);
+  font-weight: bold;
+  font-size: 0.85rem;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.auction-mybids-fab-icon-wrap { position: relative; display: inline-block; line-height: 1; }
+.auction-mybids-fab-icon { font-size: 1.2rem; }
+
+.footer-badge {
+  position: absolute;
+  top: -8px;
+  right: -13px;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 4px;
+  border-radius: 999px;
+  background: #d32f2f;
+  color: #fff;
+  font-family: Arial, 'Hiragino Kaku Gothic ProN', sans-serif;
+  font-size: 0.72rem;
+  font-weight: bold;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 0 0 2px var(--surface);
+}
+
+/* ===== 自分の入札一覧ポップ ===== */
+.auction-mybids-content {
+  width: min(92vw, 480px);
+  max-height: 80vh;
+  overflow-y: auto;
+  text-align: left;
+}
+
+.auction-mybids-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.auction-mybids-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--surface2);
+  border-radius: 8px;
+  padding: 8px;
+}
+.auction-mybids-item-clickable { cursor: pointer; }
+.auction-mybids-item-clickable:hover { background: rgba(255, 204, 0, 0.18); }
+
+.auction-mybids-thumb {
+  width: 40px;
+  height: 66px;
+  object-fit: cover;
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+
+.auction-mybids-info { flex: 1; min-width: 0; }
+
+.auction-mybids-name {
+  font-size: 0.85rem;
+  font-weight: bold;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.auction-mybids-status {
+  font-size: 0.72rem;
+  font-weight: bold;
+  margin-top: 2px;
+}
+.auction-mybids-status-winning { color: #1b6e3c; }
+.auction-mybids-status-outbid  { color: #b3261e; }
+.auction-mybids-status-won     { color: var(--gold); }
+.auction-mybids-status-lost    { color: var(--muted); }
+.auction-mybids-status-unsold  { color: var(--muted); }
+
+.auction-mybids-price {
+  font-size: 0.72rem;
+  color: var(--muted);
+  margin-top: 2px;
 }
 
 .site-footer {
