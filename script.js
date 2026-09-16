@@ -294,6 +294,9 @@ async function placeBid(listing, amount) {
 
 // ===== 即決購入（出品者⇔購入者をまたぐトランザクション。入札中だった人がいれば返金する） =====
 async function buyNow(listing) {
+  // 即決価格なしの出品はボタン自体を出していないが、念のため二重に防ぐ
+  // (Firestoreルール側にも同じガードあり)。
+  if (!listing.buyNowPrice) return;
   const myUserId = getUserId();
   if (listing.sellerId === myUserId) { showToast(s().bidOwn, true); return; }
   if (!confirm(s().buyNowConfirm(listing.itemName))) return;
@@ -639,10 +642,12 @@ function renderAuctionList(rawListings) {
       : `${s().startLabel} ${listing.startPrice}UP（${s().noBid}）`;
     info.appendChild(priceRow);
 
-    const buyNowRow = document.createElement('div');
-    buyNowRow.className = 'auction-card-buynow';
-    buyNowRow.textContent = `${s().buyNowLabel} ${listing.buyNowPrice}UP`;
-    info.appendChild(buyNowRow);
+    if (listing.buyNowPrice) {
+      const buyNowRow = document.createElement('div');
+      buyNowRow.className = 'auction-card-buynow';
+      buyNowRow.textContent = `${s().buyNowLabel} ${listing.buyNowPrice}UP`;
+      info.appendChild(buyNowRow);
+    }
 
     const timeRow = document.createElement('div');
     timeRow.className = 'auction-card-time';
@@ -670,15 +675,17 @@ function renderAuctionList(rawListings) {
       });
       actions.appendChild(bidBtn);
 
-      const buyBtn = document.createElement('button');
-      buyBtn.type = 'button';
-      buyBtn.className = 'auction-action-btn auction-buynow-btn';
-      buyBtn.textContent = s().buyNowBtn;
-      buyBtn.addEventListener('click', async () => {
-        if (!(await isLoggedIn())) { showToast(s().loginRequired, true); return; }
-        buyNow(listing);
-      });
-      actions.appendChild(buyBtn);
+      if (listing.buyNowPrice) {
+        const buyBtn = document.createElement('button');
+        buyBtn.type = 'button';
+        buyBtn.className = 'auction-action-btn auction-buynow-btn';
+        buyBtn.textContent = s().buyNowBtn;
+        buyBtn.addEventListener('click', async () => {
+          if (!(await isLoggedIn())) { showToast(s().loginRequired, true); return; }
+          buyNow(listing);
+        });
+        actions.appendChild(buyBtn);
+      }
     }
     card.appendChild(actions);
 
