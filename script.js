@@ -4,7 +4,7 @@
 import { app, db } from './firebaseConfig.js';
 import {
   collection, doc, onSnapshot, runTransaction,
-  query, where, orderBy, limit, increment,
+  query, where, orderBy, limit, increment, serverTimestamp,
 } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
 import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
 
@@ -178,7 +178,7 @@ async function settleListing(listingId) {
         if (sellerSnap.exists()) {
           tx.update(sellerRef, { ukoPoints: increment(d.currentBid) });
         }
-        tx.update(ref, { status: 'sold', soldVia: 'bid', soldPrice: d.currentBid, soldTo: d.currentBidderId });
+        tx.update(ref, { status: 'sold', soldVia: 'bid', soldPrice: d.currentBid, soldTo: d.currentBidderId, soldAt: serverTimestamp() });
       } else {
         // 入札なしで終了 → 出品者に返却
         const sellerRef = doc(db, 'omikujiUsers', d.sellerId);
@@ -293,7 +293,7 @@ async function buyNow(listing) {
         tx.update(sellerRef, { ukoPoints: increment(d.buyNowPrice) });
       }
       tx.update(listingRef, {
-        status: 'sold', soldVia: 'buyNow', soldPrice: d.buyNowPrice, soldTo: myUserId,
+        status: 'sold', soldVia: 'buyNow', soldPrice: d.buyNowPrice, soldTo: myUserId, soldAt: serverTimestamp(),
       });
     });
     showToast(s().buyNowDone, false);
