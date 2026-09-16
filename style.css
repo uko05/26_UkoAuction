@@ -82,9 +82,21 @@ main {
 .auction-sort-row {
   display: flex;
   align-items: center;
-  justify-content: flex-end;
-  gap: 6px;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
   margin-bottom: 10px;
+}
+
+.auction-sort-row-right {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.auction-listing-count {
+  font-size: 0.78rem;
+  color: var(--muted);
 }
 
 .auction-sort-label {

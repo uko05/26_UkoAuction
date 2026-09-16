@@ -102,6 +102,8 @@ const i18n = {
     sortPriceLow: '価格が安い順',
     sortPriceHigh: '価格が高い順',
     sortBidCount: '入札件数が多い順',
+    listingCount: (n) => `${n}件出品中`,
+    listingCountMax: (n) => `${n}件以上出品中`,
   },
   en: {
     pageTitle: 'Uko Auction',
@@ -145,6 +147,8 @@ const i18n = {
     sortPriceLow: 'Price: low to high',
     sortPriceHigh: 'Price: high to low',
     sortBidCount: 'Most bids',
+    listingCount: (n) => `${n} item${n === 1 ? '' : 's'} listed`,
+    listingCountMax: (n) => `${n}+ items listed`,
   },
 };
 function currentLang() {
@@ -160,6 +164,7 @@ function applyLang(lang) {
   });
   localStorage.setItem('lang', lang);
   renderAuctionList(latestListings);
+  updateListingCount();
 }
 
 function initLangSwitch() {
@@ -695,17 +700,29 @@ function renderAuctionList(rawListings) {
   }
 }
 
+// ===== 出品件数表示 =====
+// 一覧クエリのlimit件数と同じ値を上限として持っておき、上限に達している場合は
+// 「ちょうどこの件数」ではなく「以上」であることが伝わる表示にする。
+const AUCTION_LIST_QUERY_LIMIT = 100;
+function updateListingCount() {
+  const el = document.getElementById('auction-listing-count');
+  if (!el) return;
+  const count = latestListings.length;
+  el.textContent = count >= AUCTION_LIST_QUERY_LIMIT ? s().listingCountMax(count) : s().listingCount(count);
+}
+
 // ===== 初期化 =====
 function initAuctionList() {
   const q = query(
     collection(db, 'ukoMarketListings'),
     where('status', '==', 'active'),
     orderBy('endsAt', 'asc'),
-    limit(100)
+    limit(AUCTION_LIST_QUERY_LIMIT)
   );
   onSnapshot(q, (snap) => {
     latestListings = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
     renderAuctionList(latestListings);
+    updateListingCount();
   }, (err) => console.error('[auction] listen failed', err));
 
   // 残り時間はFirestoreの更新が無い限り再描画されないため、定期的に描き直して
