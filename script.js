@@ -3,8 +3,8 @@
 // 横断的に一覧・入札・即決購入できるサイト。出品自体は各サイト側(例: 14_GenshinOmikuji)で行う。
 import { app, db } from './firebaseConfig.js';
 import {
-  collection, doc, onSnapshot, runTransaction,
-  query, where, orderBy, limit, increment, serverTimestamp, arrayUnion,
+  collection, doc, addDoc, updateDoc, deleteDoc, onSnapshot, runTransaction,
+  query, where, orderBy, limit, increment, serverTimestamp, Timestamp, arrayUnion,
 } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
 import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
 
@@ -15,12 +15,20 @@ let authUid = null;
 const authReady = new Promise((resolve) => {
   onAuthStateChanged(auth, (user) => {
     authUid = user ? user.uid : null;
+    updateAdminUI();
     resolve();
   });
 });
 async function isLoggedIn() {
   await authReady;
   return !!authUid;
+}
+
+// 管理者ロール判定。25_FriendBoard/08_UPointと同じ固定UID
+// (将来複数管理者が必要になったらロールベースへの変更を検討すること)。
+const ADMIN_UID = 'UPInlRxp2eM8OI3p18UU1d3OzNc2';
+function isAdminViewer() {
+  return authUid === ADMIN_UID;
 }
 
 // ===== ユーザーID(uko05.github.io配下の全サイト共通のlocalStorageキー) =====
@@ -106,6 +114,34 @@ const i18n = {
     sortBidCount: '入札件数が多い順',
     listingCount: (n) => `${n}件出品中`,
     listingCountMax: (n) => `${n}件以上出品中`,
+    campaignAdminBtn: 'キャンペーン管理',
+    campaignAdminTitle: 'キャンペーン管理',
+    campaignEmptyList: 'まだキャンペーンはありません',
+    campaignNewTitle: '新しいキャンペーンを作成',
+    campaignTypeLabel: '種類',
+    campaignTypeSellerBonus: '出品者ボーナス(落札額×倍率)',
+    campaignTypeListingBonus: '出品即時ボーナス(定額)',
+    campaignTypeListingCountBonus: '出品数ボーナス(段階制)',
+    campaignLabelLabel: '名前(管理用メモ)',
+    campaignStartsLabel: '開始日時',
+    campaignDaysLabel: '開催日数',
+    campaignMultiplierLabel: '倍率(例: 1.5)',
+    campaignBonusAmountLabel: '出品時にもらえるUP',
+    campaignTiersLabel: '段階設定(出品数としてもらえるUP)',
+    campaignCreateBtn: '作成する',
+    campaignCreateValidation: '名前・開始日時・開催日数と、種類ごとの必須項目を入力してください。',
+    campaignCreateOk: 'キャンペーンを作成しました！',
+    campaignCreateFail: '作成に失敗しました。時間をおいて再度お試しください。',
+    campaignToggleOnBtn: '有効化する',
+    campaignToggleOffBtn: '停止する',
+    campaignToggleFail: '操作に失敗しました。',
+    campaignDeleteBtn: '削除',
+    campaignDeleteConfirm: (label) => `キャンペーン「${label}」を削除しますか？（元に戻せません）`,
+    campaignDeleteFail: '削除に失敗しました。',
+    campaignPeriod: (starts, ends) => `${starts} 〜 ${ends}`,
+    campaignBannerSellerBonus: (label, mult, until) => `🎉 ${label}: 出品が落札されると通常の${mult}倍のUPがもらえます！（${until}まで）`,
+    campaignBannerListingBonus: (label, amount, until) => `🎉 ${label}: 出品するたび+${amount}UP！（${until}まで）`,
+    campaignBannerListingCountBonus: (label, until) => `🎉 ${label}: 出品数に応じてボーナスUPがもらえます！（${until}まで）`,
   },
   en: {
     pageTitle: 'Uko Auction',
@@ -153,6 +189,34 @@ const i18n = {
     sortBidCount: 'Most bids',
     listingCount: (n) => `${n} item${n === 1 ? '' : 's'} listed`,
     listingCountMax: (n) => `${n}+ items listed`,
+    campaignAdminBtn: 'Campaigns',
+    campaignAdminTitle: 'Campaign Management',
+    campaignEmptyList: 'No campaigns yet',
+    campaignNewTitle: 'Create a new campaign',
+    campaignTypeLabel: 'Type',
+    campaignTypeSellerBonus: 'Seller bonus (winning price × multiplier)',
+    campaignTypeListingBonus: 'Instant listing bonus (flat amount)',
+    campaignTypeListingCountBonus: 'Listing count bonus (tiered)',
+    campaignLabelLabel: 'Name (admin note)',
+    campaignStartsLabel: 'Start date/time',
+    campaignDaysLabel: 'Duration (days)',
+    campaignMultiplierLabel: 'Multiplier (e.g. 1.5)',
+    campaignBonusAmountLabel: 'UP granted per listing',
+    campaignTiersLabel: 'Tiers (UP granted per listing-count milestone)',
+    campaignCreateBtn: 'Create',
+    campaignCreateValidation: 'Please fill in name, start date/time, duration, and the required field(s) for the chosen type.',
+    campaignCreateOk: 'Campaign created!',
+    campaignCreateFail: 'Failed to create. Please try again later.',
+    campaignToggleOnBtn: 'Enable',
+    campaignToggleOffBtn: 'Disable',
+    campaignToggleFail: 'Action failed.',
+    campaignDeleteBtn: 'Delete',
+    campaignDeleteConfirm: (label) => `Delete campaign "${label}"? This cannot be undone.`,
+    campaignDeleteFail: 'Failed to delete.',
+    campaignPeriod: (starts, ends) => `${starts} – ${ends}`,
+    campaignBannerSellerBonus: (label, mult, until) => `🎉 ${label}: Sellers get ${mult}x UP when their listing sells! (until ${until})`,
+    campaignBannerListingBonus: (label, amount, until) => `🎉 ${label}: +${amount}UP every time you list an item! (until ${until})`,
+    campaignBannerListingCountBonus: (label, until) => `🎉 ${label}: Bonus UP based on how many items you list! (until ${until})`,
   },
 };
 function currentLang() {
@@ -169,6 +233,8 @@ function applyLang(lang) {
   localStorage.setItem('lang', lang);
   renderAuctionList(latestListings);
   updateListingCount();
+  renderCampaignBanner();
+  renderCampaignAdminList();
 }
 
 function initLangSwitch() {
@@ -193,6 +259,44 @@ function showToast(text, isError) {
   toastTimer = setTimeout(() => { el.style.display = 'none'; }, 3200);
 }
 
+// ===== 期間限定キャンペーン(ukoAuctionCampaigns, 2026-09-18追加) =====
+// 管理者画面(このファイル下部のキャンペーン管理モーダル)で作成・編集する。
+// type別に持つフィールドが違う:
+//   sellerBonus:       multiplier(落札額に掛ける倍率。落札額×multiplierを出品者に渡す)
+//   listingBonus:      bonusAmount(出品するたび即座にもらえる定額UP。14_GenshinOmikuji側で適用)
+//   listingCountBonus: tiers([{count,bonus}, ...]。期間中の出品数が閾値を超えるたび
+//                      そのtierのbonusをもらえる。14_GenshinOmikuji側で適用・進捗管理)
+// enabledは緊急停止用(期間内でもfalseなら無効)。複数のキャンペーンを同時開催できる
+// (同じtypeが複数アクティブな場合、sellerBonusは最大倍率を採用、listingBonus/
+// listingCountBonusは合算する。それぞれの関数のコメント参照)。
+let latestCampaigns = [];
+
+function initCampaigns() {
+  onSnapshot(collection(db, 'ukoAuctionCampaigns'), (snap) => {
+    latestCampaigns = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+    renderCampaignAdminList();
+    renderCampaignBanner();
+  }, (err) => console.error('[auction] campaigns listen failed', err));
+}
+
+function isCampaignActive(c) {
+  if (!c.enabled) return false;
+  const now = Date.now();
+  return c.startsAt?.toMillis() <= now && now <= c.endsAt?.toMillis();
+}
+
+function activeCampaignsOfType(type) {
+  return latestCampaigns.filter((c) => c.type === type && isCampaignActive(c));
+}
+
+// 同時に複数のsellerBonusキャンペーンが有効な場合、乗算で重ねると際限なく増えて
+// しまうため、最大倍率のものだけを採用する(1つも無ければ通常通り1倍)。
+function activeSellerBonusMultiplier() {
+  const active = activeCampaignsOfType('sellerBonus');
+  if (!active.length) return 1;
+  return Math.max(1, ...active.map((c) => c.multiplier || 1));
+}
+
 // ===== 期限切れオークションの精算（誰かが一覧を開いた時に遅延実行する） =====
 async function settleListing(listingId) {
   const ref = doc(db, 'ukoMarketListings', listingId);
@@ -215,7 +319,10 @@ async function settleListing(listingId) {
           });
         }
         if (sellerSnap.exists()) {
-          tx.update(sellerRef, { ukoPoints: increment(d.currentBid) });
+          // sellerBonusキャンペーンが有効なら、落札額そのままではなく倍率を掛けて渡す
+          // (Firestoreの整数運用に合わせ四捨五入)。
+          const bonusPoints = Math.round(d.currentBid * activeSellerBonusMultiplier());
+          tx.update(sellerRef, { ukoPoints: increment(bonusPoints) });
         }
         tx.update(ref, { status: 'sold', soldVia: 'bid', soldPrice: d.currentBid, soldTo: d.currentBidderId, soldAt: serverTimestamp() });
       } else {
@@ -338,7 +445,9 @@ async function buyNow(listing) {
         [`missionsAchieved.${AUCTION_WIN_MISSION_CLAIM_KEY}`]: true,
       });
       if (sellerSnap.exists()) {
-        tx.update(sellerRef, { ukoPoints: increment(d.buyNowPrice) });
+        // settleListingと同じくsellerBonusキャンペーンを適用する
+        const bonusPoints = Math.round(d.buyNowPrice * activeSellerBonusMultiplier());
+        tx.update(sellerRef, { ukoPoints: increment(bonusPoints) });
       }
       tx.update(listingRef, {
         status: 'sold', soldVia: 'buyNow', soldPrice: d.buyNowPrice, soldTo: myUserId, soldAt: serverTimestamp(),
@@ -535,6 +644,199 @@ function renderMyBidsList() {
     }
     listEl.appendChild(row);
   });
+}
+
+// ===== キャンペーンお知らせバナー =====
+function fmtCampaignDate(ts) {
+  if (!ts || typeof ts.toMillis !== 'function') return '';
+  const d = new Date(ts.toMillis());
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${d.getMonth() + 1}/${d.getDate()} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+function campaignSummaryText(c) {
+  const until = fmtCampaignDate(c.endsAt);
+  if (c.type === 'sellerBonus') return s().campaignBannerSellerBonus(c.label, c.multiplier, until);
+  if (c.type === 'listingBonus') return s().campaignBannerListingBonus(c.label, c.bonusAmount, until);
+  if (c.type === 'listingCountBonus') return s().campaignBannerListingCountBonus(c.label, until);
+  return c.label || '';
+}
+
+function renderCampaignBanner() {
+  const el = document.getElementById('campaign-banner');
+  if (!el) return;
+  const active = latestCampaigns.filter(isCampaignActive);
+  el.innerHTML = '';
+  el.hidden = active.length === 0;
+  active.forEach((c) => {
+    const row = document.createElement('div');
+    row.textContent = campaignSummaryText(c);
+    el.appendChild(row);
+  });
+}
+
+// ===== キャンペーン管理(管理者ロールのみ) =====
+function updateAdminUI() {
+  const btn = document.getElementById('auction-campaign-btn');
+  if (btn) btn.hidden = !isAdminViewer();
+}
+
+function campaignTypeText(type) {
+  if (type === 'sellerBonus') return s().campaignTypeSellerBonus;
+  if (type === 'listingBonus') return s().campaignTypeListingBonus;
+  if (type === 'listingCountBonus') return s().campaignTypeListingCountBonus;
+  return type;
+}
+
+function renderCampaignAdminList() {
+  const list = document.getElementById('campaign-admin-list');
+  if (!list) return;
+  list.innerHTML = '';
+  if (!latestCampaigns.length) {
+    const p = document.createElement('p');
+    p.className = 'campaign-admin-item';
+    p.textContent = s().campaignEmptyList;
+    list.appendChild(p);
+    return;
+  }
+  // 新しいキャンペーンほど上に来るよう開始日時の降順で並べる
+  const sorted = latestCampaigns.slice().sort((a, b) => (b.startsAt?.toMillis() || 0) - (a.startsAt?.toMillis() || 0));
+  sorted.forEach((c) => {
+    const item = document.createElement('div');
+    item.className = `campaign-admin-item${c.enabled ? '' : ' campaign-admin-item-disabled'}`;
+
+    const row1 = document.createElement('div');
+    row1.className = 'campaign-admin-item-row1';
+    row1.textContent = `${c.label || ''}（${campaignTypeText(c.type)}）`;
+    item.appendChild(row1);
+
+    const period = document.createElement('div');
+    period.className = 'campaign-admin-item-period';
+    period.textContent = s().campaignPeriod(fmtCampaignDate(c.startsAt), fmtCampaignDate(c.endsAt));
+    item.appendChild(period);
+
+    const detail = document.createElement('div');
+    detail.className = 'campaign-admin-item-period';
+    if (c.type === 'sellerBonus') detail.textContent = `×${c.multiplier}`;
+    else if (c.type === 'listingBonus') detail.textContent = `+${c.bonusAmount}UP`;
+    else if (c.type === 'listingCountBonus') detail.textContent = (c.tiers || []).map((t) => `${t.count}件→+${t.bonus}UP`).join(' / ');
+    item.appendChild(detail);
+
+    const actions = document.createElement('div');
+    actions.className = 'campaign-admin-item-actions';
+    const toggleBtn = document.createElement('button');
+    toggleBtn.type = 'button';
+    toggleBtn.className = 'campaign-admin-toggle-btn';
+    toggleBtn.textContent = c.enabled ? s().campaignToggleOffBtn : s().campaignToggleOnBtn;
+    toggleBtn.addEventListener('click', () => toggleCampaign(c));
+    actions.appendChild(toggleBtn);
+    const deleteBtn = document.createElement('button');
+    deleteBtn.type = 'button';
+    deleteBtn.className = 'campaign-admin-delete-btn';
+    deleteBtn.textContent = s().campaignDeleteBtn;
+    deleteBtn.addEventListener('click', () => deleteCampaignEntry(c));
+    actions.appendChild(deleteBtn);
+    item.appendChild(actions);
+
+    list.appendChild(item);
+  });
+}
+
+async function toggleCampaign(c) {
+  try {
+    await updateDoc(doc(db, 'ukoAuctionCampaigns', c.id), { enabled: !c.enabled });
+  } catch (e) {
+    console.error('[auction] campaign toggle failed', e);
+    showToast(s().campaignToggleFail, true);
+  }
+}
+
+async function deleteCampaignEntry(c) {
+  if (!confirm(s().campaignDeleteConfirm(c.label || ''))) return;
+  try {
+    await deleteDoc(doc(db, 'ukoAuctionCampaigns', c.id));
+  } catch (e) {
+    console.error('[auction] campaign delete failed', e);
+    showToast(s().campaignDeleteFail, true);
+  }
+}
+
+function updateCampaignFormFieldsVisibility() {
+  const type = document.getElementById('campaign-new-type')?.value;
+  const sellerEl = document.getElementById('campaign-field-sellerBonus');
+  const listingEl = document.getElementById('campaign-field-listingBonus');
+  const tierEl = document.getElementById('campaign-field-listingCountBonus');
+  if (sellerEl) sellerEl.hidden = type !== 'sellerBonus';
+  if (listingEl) listingEl.hidden = type !== 'listingBonus';
+  if (tierEl) tierEl.hidden = type !== 'listingCountBonus';
+}
+
+function setCampaignFormMsg(text, isError) {
+  const msgEl = document.getElementById('campaign-new-msg');
+  if (!msgEl) return;
+  msgEl.textContent = text;
+  msgEl.className = `campaign-form-msg ${isError ? 'error' : 'ok'}`;
+}
+
+async function handleCreateCampaign() {
+  const type = document.getElementById('campaign-new-type')?.value;
+  const label = document.getElementById('campaign-new-label')?.value.trim() || '';
+  const startsRaw = document.getElementById('campaign-new-starts')?.value;
+  const days = Number(document.getElementById('campaign-new-days')?.value);
+  const startsAtMs = startsRaw ? new Date(startsRaw).getTime() : NaN;
+
+  if (!label || !Number.isFinite(startsAtMs) || !Number.isFinite(days) || days < 1) {
+    setCampaignFormMsg(s().campaignCreateValidation, true);
+    return;
+  }
+  const endsAtMs = startsAtMs + days * 24 * 60 * 60 * 1000;
+
+  const campaignData = {
+    type, label, enabled: true,
+    startsAt: Timestamp.fromMillis(startsAtMs),
+    endsAt: Timestamp.fromMillis(endsAtMs),
+    createdAt: serverTimestamp(),
+  };
+
+  if (type === 'sellerBonus') {
+    const multiplier = Number(document.getElementById('campaign-new-multiplier')?.value);
+    if (!Number.isFinite(multiplier) || multiplier <= 1) { setCampaignFormMsg(s().campaignCreateValidation, true); return; }
+    campaignData.multiplier = multiplier;
+  } else if (type === 'listingBonus') {
+    const bonusAmount = Number(document.getElementById('campaign-new-bonusAmount')?.value);
+    if (!Number.isInteger(bonusAmount) || bonusAmount < 1) { setCampaignFormMsg(s().campaignCreateValidation, true); return; }
+    campaignData.bonusAmount = bonusAmount;
+  } else if (type === 'listingCountBonus') {
+    const tiers = [];
+    for (let i = 1; i <= 5; i++) {
+      const count = Number(document.getElementById(`campaign-tier-count-${i}`)?.value);
+      const bonus = Number(document.getElementById(`campaign-tier-bonus-${i}`)?.value);
+      if (Number.isInteger(count) && count > 0 && Number.isInteger(bonus) && bonus > 0) tiers.push({ count, bonus });
+    }
+    if (!tiers.length) { setCampaignFormMsg(s().campaignCreateValidation, true); return; }
+    tiers.sort((a, b) => a.count - b.count);
+    campaignData.tiers = tiers;
+  }
+
+  try {
+    await addDoc(collection(db, 'ukoAuctionCampaigns'), campaignData);
+    setCampaignFormMsg(s().campaignCreateOk, false);
+    const labelInput = document.getElementById('campaign-new-label');
+    if (labelInput) labelInput.value = '';
+  } catch (e) {
+    console.error('[auction] campaign create failed', e);
+    setCampaignFormMsg(s().campaignCreateFail, true);
+  }
+}
+
+function openCampaignModal() {
+  renderCampaignAdminList();
+  const modal = document.getElementById('auction-campaign-modal');
+  if (modal) modal.style.display = 'flex';
+}
+function closeCampaignModal() {
+  const modal = document.getElementById('auction-campaign-modal');
+  if (modal) modal.style.display = 'none';
 }
 
 // ===== 一覧描画 =====
@@ -777,7 +1079,20 @@ function initAuctionList() {
   const myBidsBackdrop = document.querySelector('#auction-mybids-modal .col-modal-backdrop');
   if (myBidsBackdrop) myBidsBackdrop.addEventListener('click', closeMyBidsModal);
 
+  const campaignBtn = document.getElementById('auction-campaign-btn');
+  if (campaignBtn) campaignBtn.addEventListener('click', openCampaignModal);
+  const campaignClose = document.getElementById('auction-campaign-close');
+  if (campaignClose) campaignClose.addEventListener('click', closeCampaignModal);
+  const campaignBackdrop = document.querySelector('#auction-campaign-modal .col-modal-backdrop');
+  if (campaignBackdrop) campaignBackdrop.addEventListener('click', closeCampaignModal);
+  const campaignTypeSelect = document.getElementById('campaign-new-type');
+  if (campaignTypeSelect) campaignTypeSelect.addEventListener('change', updateCampaignFormFieldsVisibility);
+  const campaignCreateBtn = document.getElementById('campaign-new-create-btn');
+  if (campaignCreateBtn) campaignCreateBtn.addEventListener('click', handleCreateCampaign);
+  updateCampaignFormFieldsVisibility();
+
   initMyBidsTracking();
+  initCampaigns();
   initSortSelect();
 }
 
