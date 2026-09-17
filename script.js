@@ -122,12 +122,14 @@ const i18n = {
     campaignTypeSellerBonus: '出品者ボーナス(落札額×倍率)',
     campaignTypeListingBonus: '出品即時ボーナス(定額)',
     campaignTypeListingCountBonus: '出品数ボーナス(段階制)',
+    campaignTypeBidderBonus: '落札者キャッシュバック(落札額の%還元)',
     campaignLabelLabel: '名前(管理用メモ)',
     campaignStartsLabel: '開始日時',
     campaignDaysLabel: '開催日数',
     campaignMultiplierLabel: '倍率(例: 1.5)',
     campaignBonusAmountLabel: '出品時にもらえるUP',
     campaignTiersLabel: '段階設定(出品数としてもらえるUP)',
+    campaignRateLabel: '還元率(%、例: 10)',
     campaignCreateBtn: '作成する',
     campaignCreateValidation: '名前・開始日時・開催日数と、種類ごとの必須項目を入力してください。',
     campaignCreateOk: 'キャンペーンを作成しました！',
@@ -142,6 +144,8 @@ const i18n = {
     campaignBannerSellerBonus: (label, mult, until) => `🎉 ${label}: 出品が落札されると通常の${mult}倍のUPがもらえます！（${until}まで）`,
     campaignBannerListingBonus: (label, amount, until) => `🎉 ${label}: 出品するたび+${amount}UP！（${until}まで）`,
     campaignBannerListingCountBonus: (label, until) => `🎉 ${label}: 出品数に応じてボーナスUPがもらえます！（${until}まで）`,
+    campaignBannerBidderBonus: (label, rate, until) => `🎉 ${label}: 落札・即決購入すると支払額の${rate}%がUPで還元されます！（${until}まで）`,
+    campaignDetailBidderBonus: (rate) => `${rate}%還元`,
   },
   en: {
     pageTitle: 'Uko Auction',
@@ -197,12 +201,14 @@ const i18n = {
     campaignTypeSellerBonus: 'Seller bonus (winning price × multiplier)',
     campaignTypeListingBonus: 'Instant listing bonus (flat amount)',
     campaignTypeListingCountBonus: 'Listing count bonus (tiered)',
+    campaignTypeBidderBonus: 'Bidder cashback (% of price back)',
     campaignLabelLabel: 'Name (admin note)',
     campaignStartsLabel: 'Start date/time',
     campaignDaysLabel: 'Duration (days)',
     campaignMultiplierLabel: 'Multiplier (e.g. 1.5)',
     campaignBonusAmountLabel: 'UP granted per listing',
     campaignTiersLabel: 'Tiers (UP granted per listing-count milestone)',
+    campaignRateLabel: 'Cashback rate (%, e.g. 10)',
     campaignCreateBtn: 'Create',
     campaignCreateValidation: 'Please fill in name, start date/time, duration, and the required field(s) for the chosen type.',
     campaignCreateOk: 'Campaign created!',
@@ -217,6 +223,8 @@ const i18n = {
     campaignBannerSellerBonus: (label, mult, until) => `🎉 ${label}: Sellers get ${mult}x UP when their listing sells! (until ${until})`,
     campaignBannerListingBonus: (label, amount, until) => `🎉 ${label}: +${amount}UP every time you list an item! (until ${until})`,
     campaignBannerListingCountBonus: (label, until) => `🎉 ${label}: Bonus UP based on how many items you list! (until ${until})`,
+    campaignBannerBidderBonus: (label, rate, until) => `🎉 ${label}: Get ${rate}% of what you pay back as UP when you win or buy now! (until ${until})`,
+    campaignDetailBidderBonus: (rate) => `${rate}% cashback`,
   },
 };
 function currentLang() {
@@ -266,9 +274,11 @@ function showToast(text, isError) {
 //   listingBonus:      bonusAmount(出品するたび即座にもらえる定額UP。14_GenshinOmikuji側で適用)
 //   listingCountBonus: tiers([{count,bonus}, ...]。期間中の出品数が閾値を超えるたび
 //                      そのtierのbonusをもらえる。14_GenshinOmikuji側で適用・進捗管理)
+//   bidderBonus:       rate(落札額/即決価格に対する還元率%。支払額はそのままに、
+//                      rate%分を別途UPで落札者へ還元する)
 // enabledは緊急停止用(期間内でもfalseなら無効)。複数のキャンペーンを同時開催できる
-// (同じtypeが複数アクティブな場合、sellerBonusは最大倍率を採用、listingBonus/
-// listingCountBonusは合算する。それぞれの関数のコメント参照)。
+// (同じtypeが複数アクティブな場合、sellerBonus/bidderBonusは最大値を採用、
+// listingBonus/listingCountBonusは合算する。それぞれの関数のコメント参照)。
 let latestCampaigns = [];
 
 function initCampaigns() {
@@ -297,6 +307,18 @@ function activeSellerBonusMultiplier() {
   return Math.max(1, ...active.map((c) => c.multiplier || 1));
 }
 
+// 落札者(買う側)向けのキャッシュバック。落札額はそのまま支払った上で、
+// 落札額のrate%が別途UPで還元される。sellerBonusと同じ理由で、複数有効な場合も
+// 合算せず最大rateのものだけを採用する(1つも無ければ0%)。
+function activeBidderBonusRate() {
+  const active = activeCampaignsOfType('bidderBonus');
+  if (!active.length) return 0;
+  return Math.max(0, ...active.map((c) => c.rate || 0));
+}
+function bidderBonusPoints(price) {
+  return Math.round(price * activeBidderBonusRate() / 100);
+}
+
 // ===== 期限切れオークションの精算（誰かが一覧を開いた時に遅延実行する） =====
 async function settleListing(listingId) {
   const ref = doc(db, 'ukoMarketListings', listingId);
@@ -313,10 +335,14 @@ async function settleListing(listingId) {
         const sellerRef = doc(db, 'omikujiUsers', d.sellerId);
         const [winnerSnap, sellerSnap] = await Promise.all([tx.get(winnerRef), tx.get(sellerRef)]);
         if (winnerSnap.exists()) {
-          tx.update(winnerRef, {
+          // bidderBonusキャンペーンが有効なら、支払額はそのままに一部をUPで還元する
+          const cashback = bidderBonusPoints(d.currentBid);
+          const winnerUpdates = {
             [d.returnField]: increment(1),
             [`missionsAchieved.${AUCTION_WIN_MISSION_CLAIM_KEY}`]: true,
-          });
+          };
+          if (cashback > 0) winnerUpdates.ukoPoints = increment(cashback);
+          tx.update(winnerRef, winnerUpdates);
         }
         if (sellerSnap.exists()) {
           // sellerBonusキャンペーンが有効なら、落札額そのままではなく倍率を掛けて渡す
@@ -439,8 +465,11 @@ async function buyNow(listing) {
         }
       }
 
+      // bidderBonusキャンペーンが有効なら、支払額はそのままに一部をUPで還元する
+      // (支払いと同じukoPoints incrementにまとめて、差額分だけ動かす)
+      const cashback = bidderBonusPoints(d.buyNowPrice);
       tx.update(myRef, {
-        ukoPoints: increment(-d.buyNowPrice),
+        ukoPoints: increment(cashback - d.buyNowPrice),
         [d.returnField]: increment(1),
         [`missionsAchieved.${AUCTION_WIN_MISSION_CLAIM_KEY}`]: true,
       });
@@ -659,6 +688,7 @@ function campaignSummaryText(c) {
   if (c.type === 'sellerBonus') return s().campaignBannerSellerBonus(c.label, c.multiplier, until);
   if (c.type === 'listingBonus') return s().campaignBannerListingBonus(c.label, c.bonusAmount, until);
   if (c.type === 'listingCountBonus') return s().campaignBannerListingCountBonus(c.label, until);
+  if (c.type === 'bidderBonus') return s().campaignBannerBidderBonus(c.label, c.rate, until);
   return c.label || '';
 }
 
@@ -685,6 +715,7 @@ function campaignTypeText(type) {
   if (type === 'sellerBonus') return s().campaignTypeSellerBonus;
   if (type === 'listingBonus') return s().campaignTypeListingBonus;
   if (type === 'listingCountBonus') return s().campaignTypeListingCountBonus;
+  if (type === 'bidderBonus') return s().campaignTypeBidderBonus;
   return type;
 }
 
@@ -720,6 +751,7 @@ function renderCampaignAdminList() {
     if (c.type === 'sellerBonus') detail.textContent = `×${c.multiplier}`;
     else if (c.type === 'listingBonus') detail.textContent = `+${c.bonusAmount}UP`;
     else if (c.type === 'listingCountBonus') detail.textContent = (c.tiers || []).map((t) => `${t.count}件→+${t.bonus}UP`).join(' / ');
+    else if (c.type === 'bidderBonus') detail.textContent = s().campaignDetailBidderBonus(c.rate);
     item.appendChild(detail);
 
     const actions = document.createElement('div');
@@ -766,9 +798,11 @@ function updateCampaignFormFieldsVisibility() {
   const sellerEl = document.getElementById('campaign-field-sellerBonus');
   const listingEl = document.getElementById('campaign-field-listingBonus');
   const tierEl = document.getElementById('campaign-field-listingCountBonus');
+  const bidderEl = document.getElementById('campaign-field-bidderBonus');
   if (sellerEl) sellerEl.hidden = type !== 'sellerBonus';
   if (listingEl) listingEl.hidden = type !== 'listingBonus';
   if (tierEl) tierEl.hidden = type !== 'listingCountBonus';
+  if (bidderEl) bidderEl.hidden = type !== 'bidderBonus';
 }
 
 function setCampaignFormMsg(text, isError) {
@@ -816,6 +850,10 @@ async function handleCreateCampaign() {
     if (!tiers.length) { setCampaignFormMsg(s().campaignCreateValidation, true); return; }
     tiers.sort((a, b) => a.count - b.count);
     campaignData.tiers = tiers;
+  } else if (type === 'bidderBonus') {
+    const rate = Number(document.getElementById('campaign-new-rate')?.value);
+    if (!Number.isFinite(rate) || rate <= 0) { setCampaignFormMsg(s().campaignCreateValidation, true); return; }
+    campaignData.rate = rate;
   }
 
   try {

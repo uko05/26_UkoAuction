@@ -92,6 +92,7 @@
               <option value="sellerBonus" data-i18n="campaignTypeSellerBonus">出品者ボーナス(落札額×倍率)</option>
               <option value="listingBonus" data-i18n="campaignTypeListingBonus">出品即時ボーナス(定額)</option>
               <option value="listingCountBonus" data-i18n="campaignTypeListingCountBonus">出品数ボーナス(段階制)</option>
+              <option value="bidderBonus" data-i18n="campaignTypeBidderBonus">落札者キャッシュバック(落札額の%還元)</option>
             </select>
           </label>
           <label class="campaign-form-row">
@@ -150,6 +151,11 @@
               <span>UP</span>
             </div>
           </div>
+
+          <label id="campaign-field-bidderBonus" class="campaign-form-row" hidden>
+            <span data-i18n="campaignRateLabel">還元率(%、例: 10)</span>
+            <input type="number" id="campaign-new-rate" min="1" max="100" step="1" value="10">
+          </label>
 
           <button type="button" id="campaign-new-create-btn" class="auction-bid-submit-btn" data-i18n="campaignCreateBtn">作成する</button>
           <p class="campaign-form-msg" id="campaign-new-msg"></p>
