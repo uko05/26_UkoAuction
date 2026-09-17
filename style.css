@@ -178,6 +178,24 @@ main {
   background: rgba(211, 47, 47, 0.12);
 }
 
+.auction-card-owned {
+  display: inline-block;
+  font-size: 0.66rem;
+  font-weight: bold;
+  border-radius: 999px;
+  padding: 2px 8px;
+  margin-bottom: 4px;
+  margin-left: 4px;
+}
+.auction-card-owned-yes {
+  color: #1b6e3c;
+  background: rgba(46, 160, 90, 0.14);
+}
+.auction-card-owned-no {
+  color: #666;
+  background: rgba(0, 0, 0, 0.06);
+}
+
 .auction-card-name {
   font-size: 0.9rem;
   font-weight: bold;

@@ -91,6 +91,8 @@ const i18n = {
     myBidsEmpty: 'まだ入札した商品はありません',
     badgeWinning: '入札中',
     badgeOutbid: '更新あり',
+    badgeOwned: '所持済',
+    badgeNotOwned: '未所持',
     statusWinning: '入札中（最高額）',
     statusOutbid: '更新されました（他の人が上回っています）',
     statusWon: '落札しました！',
@@ -136,6 +138,8 @@ const i18n = {
     myBidsEmpty: "You haven't bid on anything yet",
     badgeWinning: 'Winning',
     badgeOutbid: 'Outbid',
+    badgeOwned: 'Owned',
+    badgeNotOwned: 'Not owned',
     statusWinning: 'Winning (highest bid)',
     statusOutbid: "Outbid (someone else's bid is higher)",
     statusWon: 'You won it!',
@@ -438,12 +442,19 @@ function syncMyBidListeners() {
   });
 }
 
+// 自分が既に持っている裏面デザイン(所持済/未所持バッジ用)。myBidsと同じ
+// omikujiUsers/{自分}購読に相乗りさせる(別途購読を増やさないため)。
+let myCardBacks = {};
+
 function initMyBidsTracking() {
   const myUserId = getUserId();
   onSnapshot(doc(db, 'omikujiUsers', myUserId), (snap) => {
-    myBidListingIds = snap.exists() ? (snap.data().myBids || []) : [];
+    const data = snap.exists() ? snap.data() : {};
+    myBidListingIds = data.myBids || [];
+    myCardBacks = data.cardBacks || {};
     syncMyBidListeners();
     updateMyBidsBadge();
+    renderAuctionList(latestListings);
     if (myBidsModalOpen) renderMyBidsList();
   }, (err) => console.error('[auction] myBids listen failed', err));
 }
@@ -617,6 +628,17 @@ function renderAuctionList(rawListings) {
     siteEl.className = 'auction-card-site';
     siteEl.textContent = siteLabel(listing.siteKey);
     info.appendChild(siteEl);
+
+    // 所持済/未所持バッジ。今のところ出品元はomikujiのみで、所持数は
+    // omikujiUsers.cardBacksでしか判定できないため、siteKeyで絞っておく
+    // (将来他サイトが出品するようになった時、誤判定を出さないため)。
+    if (listing.siteKey === 'omikuji') {
+      const owned = (myCardBacks[listing.itemId] || 0) > 0;
+      const ownedEl = document.createElement('span');
+      ownedEl.className = `auction-card-owned auction-card-owned-${owned ? 'yes' : 'no'}`;
+      ownedEl.textContent = owned ? s().badgeOwned : s().badgeNotOwned;
+      info.appendChild(ownedEl);
+    }
 
     if (myBidListingIds.includes(listing.id)) {
       // 個別購読がまだ来ていない間は一覧側(latestListings)のデータで代用する
