@@ -18,6 +18,13 @@
 
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
+/* [hidden]属性は本来ブラウザ標準でdisplay:noneになるはずだが、同じ要素に
+   display:flex等を指定するクラス(.auction-mybids-fabなど)が付いていると、
+   作成者スタイルがUAスタイルシートのデフォルトに勝ってしまい非表示にならない
+   (originがspecificityより優先されるため)。キャンペーン管理ボタンが管理者
+   以外にも表示されていたバグの原因がこれだったので、明示的に強制する。 */
+[hidden] { display: none !important; }
+
 .site-version {
   position: fixed;
   right: 8px;
