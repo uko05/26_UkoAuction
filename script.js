@@ -930,11 +930,220 @@ function initSortSelect() {
   });
 }
 
+// ===== 表示モード(リスト/グリッド) =====
+// 出品数が増えてきた時に見渡しやすいよう、ヤフオク風の正方形サムネ+価格+残り時間
+// だけのグリッド表示に切り替えられるようにした(2026-09-18)。並べ替えと同じく
+// localStorageに保存し、次回訪問時も直前のモードを覚えている。
+const AUCTION_VIEW_KEY = 'ukoAuction_viewMode';
+function getViewMode() {
+  return localStorage.getItem(AUCTION_VIEW_KEY) === 'grid' ? 'grid' : 'list';
+}
+function initViewToggle() {
+  const listBtn = document.getElementById('auction-view-list-btn');
+  const gridBtn = document.getElementById('auction-view-grid-btn');
+  const applyActive = () => {
+    const mode = getViewMode();
+    listBtn?.classList.toggle('active', mode === 'list');
+    gridBtn?.classList.toggle('active', mode === 'grid');
+  };
+  applyActive();
+  listBtn?.addEventListener('click', () => {
+    localStorage.setItem(AUCTION_VIEW_KEY, 'list');
+    applyActive();
+    renderAuctionList(latestListings);
+  });
+  gridBtn?.addEventListener('click', () => {
+    localStorage.setItem(AUCTION_VIEW_KEY, 'grid');
+    applyActive();
+    renderAuctionList(latestListings);
+  });
+}
+
+// ===== カード描画(リスト表示。従来通りの横長カード、ボタンが全部並ぶ) =====
+function buildListCard(listing, myUserId, isExpired) {
+  const card = document.createElement('div');
+  card.className = 'auction-card';
+  card.dataset.listingId = listing.id;
+
+  const img = document.createElement('img');
+  img.className = 'auction-card-img';
+  img.src = listing.itemImageUrl;
+  img.alt = listing.itemName;
+  img.loading = 'lazy';
+  img.addEventListener('click', () => openLightbox(listing.itemImageUrl));
+  card.appendChild(img);
+
+  const info = document.createElement('div');
+  info.className = 'auction-card-info';
+
+  const siteEl = document.createElement('span');
+  siteEl.className = 'auction-card-site';
+  siteEl.textContent = siteLabel(listing.siteKey);
+  info.appendChild(siteEl);
+
+  // 所持済/未所持バッジ。今のところ出品元はomikujiのみで、所持数は
+  // omikujiUsers.cardBacksでしか判定できないため、siteKeyで絞っておく
+  // (将来他サイトが出品するようになった時、誤判定を出さないため)。
+  if (listing.siteKey === 'omikuji') {
+    const owned = (myCardBacks[listing.itemId] || 0) > 0;
+    const ownedEl = document.createElement('span');
+    ownedEl.className = `auction-card-owned auction-card-owned-${owned ? 'yes' : 'no'}`;
+    ownedEl.textContent = owned ? s().badgeOwned : s().badgeNotOwned;
+    info.appendChild(ownedEl);
+  }
+
+  if (myBidListingIds.includes(listing.id)) {
+    // 個別購読がまだ来ていない間は一覧側(latestListings)のデータで代用する
+    const trackedData = myBidListingsData.get(listing.id) || listing;
+    const myStatus = myBidStatus(trackedData, myUserId);
+    if (myStatus === 'winning' || myStatus === 'outbid') {
+      const statusEl = document.createElement('span');
+      statusEl.className = `auction-card-mystatus auction-card-mystatus-${myStatus}`;
+      statusEl.textContent = myStatus === 'winning' ? s().badgeWinning : s().badgeOutbid;
+      info.appendChild(statusEl);
+    }
+  }
+
+  const name = document.createElement('div');
+  name.className = 'auction-card-name';
+  name.textContent = listing.itemName;
+  info.appendChild(name);
+
+  const priceRow = document.createElement('div');
+  priceRow.className = 'auction-card-price';
+  priceRow.textContent = listing.currentBid > 0
+    ? `${s().currentLabel} ${listing.currentBid}UP`
+    : `${s().startLabel} ${listing.startPrice}UP（${s().noBid}）`;
+  info.appendChild(priceRow);
+
+  if (listing.buyNowPrice) {
+    const buyNowRow = document.createElement('div');
+    buyNowRow.className = 'auction-card-buynow';
+    buyNowRow.textContent = `${s().buyNowLabel} ${listing.buyNowPrice}UP`;
+    info.appendChild(buyNowRow);
+  }
+
+  const timeRow = document.createElement('div');
+  timeRow.className = 'auction-card-time';
+  timeRow.textContent = isExpired ? s().ended : fmtTimeLeft(listing.endsAt);
+  info.appendChild(timeRow);
+
+  card.appendChild(info);
+
+  const isMine = listing.sellerId === myUserId;
+  const actions = document.createElement('div');
+  actions.className = 'auction-card-actions';
+  if (isMine) {
+    const mine = document.createElement('span');
+    mine.className = 'auction-card-mine';
+    mine.textContent = s().yourListing;
+    actions.appendChild(mine);
+  } else if (!isExpired) {
+    const bidBtn = document.createElement('button');
+    bidBtn.type = 'button';
+    bidBtn.className = 'auction-action-btn';
+    bidBtn.textContent = s().bidBtn;
+    bidBtn.addEventListener('click', async () => {
+      if (!(await isLoggedIn())) { showToast(s().loginRequired, true); return; }
+      openBidModal(listing);
+    });
+    actions.appendChild(bidBtn);
+
+    if (listing.buyNowPrice) {
+      const buyBtn = document.createElement('button');
+      buyBtn.type = 'button';
+      buyBtn.className = 'auction-action-btn auction-buynow-btn';
+      buyBtn.textContent = s().buyNowBtn;
+      buyBtn.addEventListener('click', async () => {
+        if (!(await isLoggedIn())) { showToast(s().loginRequired, true); return; }
+        buyNow(listing);
+      });
+      actions.appendChild(buyBtn);
+    }
+  }
+  card.appendChild(actions);
+
+  return card;
+}
+
+// ===== タイル描画(グリッド表示。ヤフオク風、正方形サムネ+価格+残り時間の最小限セット) =====
+// タイル全体のクリックで入札ポップを開く(リスト表示の「入札する」ボタンと同じ動線)。
+// 即決購入はサムネ右上の小さいバッジをタップした時だけ発火させ(stopPropagationで
+// タイル本体のクリックと競合しないようにする)、自分の出品はクリックしても
+// 何も起きない画像拡大だけにする(入札できないため)。
+function buildGridTile(listing, myUserId, isExpired) {
+  const tile = document.createElement('div');
+  tile.className = 'auction-tile';
+  tile.dataset.listingId = listing.id;
+
+  const imgWrap = document.createElement('div');
+  imgWrap.className = 'auction-tile-img-wrap';
+
+  const img = document.createElement('img');
+  img.className = 'auction-tile-img';
+  img.src = listing.itemImageUrl;
+  img.alt = listing.itemName;
+  img.loading = 'lazy';
+  imgWrap.appendChild(img);
+
+  if (listing.siteKey === 'omikuji') {
+    const owned = (myCardBacks[listing.itemId] || 0) > 0;
+    const dot = document.createElement('span');
+    dot.className = `auction-tile-owned auction-tile-owned-${owned ? 'yes' : 'no'}`;
+    dot.title = owned ? s().badgeOwned : s().badgeNotOwned;
+    imgWrap.appendChild(dot);
+  }
+
+  const isMine = listing.sellerId === myUserId;
+
+  if (isMine) {
+    const mine = document.createElement('span');
+    mine.className = 'auction-tile-mine-badge';
+    mine.textContent = s().yourListing;
+    imgWrap.appendChild(mine);
+  } else if (listing.buyNowPrice && !isExpired) {
+    const badge = document.createElement('span');
+    badge.className = 'auction-tile-buynow-badge';
+    badge.textContent = s().buyNowLabel;
+    badge.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      if (!(await isLoggedIn())) { showToast(s().loginRequired, true); return; }
+      buyNow(listing);
+    });
+    imgWrap.appendChild(badge);
+  }
+
+  tile.appendChild(imgWrap);
+
+  const price = document.createElement('div');
+  price.className = 'auction-tile-price';
+  price.textContent = listing.currentBid > 0 ? `${listing.currentBid}UP` : `${listing.startPrice}UP`;
+  tile.appendChild(price);
+
+  const time = document.createElement('div');
+  time.className = 'auction-tile-time';
+  time.textContent = isExpired ? s().ended : fmtTimeLeft(listing.endsAt);
+  tile.appendChild(time);
+
+  if (!isMine && !isExpired) {
+    tile.addEventListener('click', async () => {
+      if (!(await isLoggedIn())) { showToast(s().loginRequired, true); return; }
+      openBidModal(listing);
+    });
+  } else {
+    tile.addEventListener('click', () => openLightbox(listing.itemImageUrl));
+  }
+
+  return tile;
+}
+
 function renderAuctionList(rawListings) {
   const listEl = document.getElementById('auction-list');
   if (!listEl) return;
   const myUserId = getUserId();
   const listings = sortListings(rawListings);
+  const mode = getViewMode();
+  listEl.className = mode === 'grid' ? 'auction-list-grid' : 'auction-list';
   listEl.innerHTML = '';
 
   if (listings.length === 0) {
@@ -948,110 +1157,10 @@ function renderAuctionList(rawListings) {
   listings.forEach((listing) => {
     const isExpired = listing.endsAt && listing.endsAt.toMillis() <= Date.now();
     if (isExpired) { settleListing(listing.id); }
-
-    const card = document.createElement('div');
-    card.className = 'auction-card';
-    card.dataset.listingId = listing.id;
-
-    const img = document.createElement('img');
-    img.className = 'auction-card-img';
-    img.src = listing.itemImageUrl;
-    img.alt = listing.itemName;
-    img.loading = 'lazy';
-    img.addEventListener('click', () => openLightbox(listing.itemImageUrl));
-    card.appendChild(img);
-
-    const info = document.createElement('div');
-    info.className = 'auction-card-info';
-
-    const siteEl = document.createElement('span');
-    siteEl.className = 'auction-card-site';
-    siteEl.textContent = siteLabel(listing.siteKey);
-    info.appendChild(siteEl);
-
-    // 所持済/未所持バッジ。今のところ出品元はomikujiのみで、所持数は
-    // omikujiUsers.cardBacksでしか判定できないため、siteKeyで絞っておく
-    // (将来他サイトが出品するようになった時、誤判定を出さないため)。
-    if (listing.siteKey === 'omikuji') {
-      const owned = (myCardBacks[listing.itemId] || 0) > 0;
-      const ownedEl = document.createElement('span');
-      ownedEl.className = `auction-card-owned auction-card-owned-${owned ? 'yes' : 'no'}`;
-      ownedEl.textContent = owned ? s().badgeOwned : s().badgeNotOwned;
-      info.appendChild(ownedEl);
-    }
-
-    if (myBidListingIds.includes(listing.id)) {
-      // 個別購読がまだ来ていない間は一覧側(latestListings)のデータで代用する
-      const trackedData = myBidListingsData.get(listing.id) || listing;
-      const myStatus = myBidStatus(trackedData, myUserId);
-      if (myStatus === 'winning' || myStatus === 'outbid') {
-        const statusEl = document.createElement('span');
-        statusEl.className = `auction-card-mystatus auction-card-mystatus-${myStatus}`;
-        statusEl.textContent = myStatus === 'winning' ? s().badgeWinning : s().badgeOutbid;
-        info.appendChild(statusEl);
-      }
-    }
-
-    const name = document.createElement('div');
-    name.className = 'auction-card-name';
-    name.textContent = listing.itemName;
-    info.appendChild(name);
-
-    const priceRow = document.createElement('div');
-    priceRow.className = 'auction-card-price';
-    priceRow.textContent = listing.currentBid > 0
-      ? `${s().currentLabel} ${listing.currentBid}UP`
-      : `${s().startLabel} ${listing.startPrice}UP（${s().noBid}）`;
-    info.appendChild(priceRow);
-
-    if (listing.buyNowPrice) {
-      const buyNowRow = document.createElement('div');
-      buyNowRow.className = 'auction-card-buynow';
-      buyNowRow.textContent = `${s().buyNowLabel} ${listing.buyNowPrice}UP`;
-      info.appendChild(buyNowRow);
-    }
-
-    const timeRow = document.createElement('div');
-    timeRow.className = 'auction-card-time';
-    timeRow.textContent = isExpired ? s().ended : fmtTimeLeft(listing.endsAt);
-    info.appendChild(timeRow);
-
-    card.appendChild(info);
-
-    const isMine = listing.sellerId === myUserId;
-    const actions = document.createElement('div');
-    actions.className = 'auction-card-actions';
-    if (isMine) {
-      const mine = document.createElement('span');
-      mine.className = 'auction-card-mine';
-      mine.textContent = s().yourListing;
-      actions.appendChild(mine);
-    } else if (!isExpired) {
-      const bidBtn = document.createElement('button');
-      bidBtn.type = 'button';
-      bidBtn.className = 'auction-action-btn';
-      bidBtn.textContent = s().bidBtn;
-      bidBtn.addEventListener('click', async () => {
-        if (!(await isLoggedIn())) { showToast(s().loginRequired, true); return; }
-        openBidModal(listing);
-      });
-      actions.appendChild(bidBtn);
-
-      if (listing.buyNowPrice) {
-        const buyBtn = document.createElement('button');
-        buyBtn.type = 'button';
-        buyBtn.className = 'auction-action-btn auction-buynow-btn';
-        buyBtn.textContent = s().buyNowBtn;
-        buyBtn.addEventListener('click', async () => {
-          if (!(await isLoggedIn())) { showToast(s().loginRequired, true); return; }
-          buyNow(listing);
-        });
-        actions.appendChild(buyBtn);
-      }
-    }
-    card.appendChild(actions);
-
-    listEl.appendChild(card);
+    const node = mode === 'grid'
+      ? buildGridTile(listing, myUserId, isExpired)
+      : buildListCard(listing, myUserId, isExpired);
+    listEl.appendChild(node);
   });
 
   // ディープリンク(?listing=<id>)で来た場合、該当アイテムが見つかり次第、入札ポップを自動で開く
@@ -1132,6 +1241,7 @@ function initAuctionList() {
   initMyBidsTracking();
   initCampaigns();
   initSortSelect();
+  initViewToggle();
 }
 
 initLangSwitch();

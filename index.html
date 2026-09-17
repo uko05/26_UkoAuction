@@ -33,6 +33,10 @@
         <div class="auction-sort-row">
           <span id="auction-listing-count" class="auction-listing-count"></span>
           <span class="auction-sort-row-right">
+          <span class="auction-view-toggle" role="group" aria-label="表示切替">
+            <button type="button" id="auction-view-list-btn" class="auction-view-btn" data-view="list" aria-label="リスト表示">☰</button>
+            <button type="button" id="auction-view-grid-btn" class="auction-view-btn" data-view="grid" aria-label="グリッド表示">▦</button>
+          </span>
           <label for="auction-sort-select" class="auction-sort-label" data-i18n="sortLabel">並べ替え</label>
           <select id="auction-sort-select" class="auction-sort-select">
             <option value="endingSoon" data-i18n="sortEndingSoon">残り時間が短い順</option>
