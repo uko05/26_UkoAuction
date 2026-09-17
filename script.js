@@ -877,6 +877,19 @@ function buildGridTile(listing, myUserId, isExpired) {
     imgWrap.appendChild(badge);
   }
 
+  // 自分の入札ステータス(入札中/更新あり)。サムネに重ねて、下寄せの小さいバッジで表示する
+  // (画像上部は所持済/未所持ドットや即決バッジが既にあるため)。
+  if (!isMine && myBidListingIds.includes(listing.id)) {
+    const trackedData = myBidListingsData.get(listing.id) || listing;
+    const myStatus = myBidStatus(trackedData, myUserId);
+    if (myStatus === 'winning' || myStatus === 'outbid') {
+      const statusEl = document.createElement('span');
+      statusEl.className = `auction-tile-mystatus auction-tile-mystatus-${myStatus}`;
+      statusEl.textContent = myStatus === 'winning' ? s().badgeWinning : s().badgeOutbid;
+      imgWrap.appendChild(statusEl);
+    }
+  }
+
   tile.appendChild(imgWrap);
 
   const price = document.createElement('div');

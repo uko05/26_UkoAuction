@@ -211,6 +211,18 @@ main {
   background: rgba(0,0,0,0.55);
   padding: 2px 0;
 }
+.auction-tile-mystatus {
+  position: absolute;
+  bottom: 4px;
+  left: 4px;
+  font-size: 0.6rem;
+  font-weight: bold;
+  color: #fff;
+  padding: 2px 7px;
+  border-radius: 999px;
+}
+.auction-tile-mystatus-winning { background: #2ea05a; }
+.auction-tile-mystatus-outbid { background: #d32f2f; }
 .auction-tile-price {
   font-size: 0.74rem;
   color: var(--gold);
