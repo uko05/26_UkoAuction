@@ -473,12 +473,6 @@ main {
   color: var(--text);
   cursor: pointer;
 }
-/* 管理者のキャンペーン管理ボタンが表示される時(管理者ロールのみ)、自分の入札ボタンとの
-   間に境界線を入れて2ボタンだと分かりやすくする。*/
-#auction-campaign-btn {
-  border-right: 1px solid var(--border);
-}
-
 .auction-mybids-fab-icon-wrap { position: relative; display: inline-block; line-height: 1; }
 .auction-mybids-fab-icon { font-size: 1.2rem; }
 
@@ -614,93 +608,3 @@ main {
   font-weight: bold;
 }
 
-/* ===== キャンペーン管理(管理者) ===== */
-.auction-campaign-content {
-  width: min(92vw, 520px);
-  max-height: 85vh;
-  overflow-y: auto;
-  text-align: left;
-}
-.campaign-admin-list {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  margin: 10px 0 18px;
-}
-.campaign-admin-item {
-  background: var(--surface2);
-  border-radius: 8px;
-  padding: 8px 10px;
-  font-size: 0.78rem;
-}
-.campaign-admin-item-disabled { opacity: 0.5; }
-.campaign-admin-item-row1 {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  font-weight: bold;
-  margin-bottom: 2px;
-}
-.campaign-admin-item-period { color: var(--muted); font-weight: normal; }
-.campaign-admin-item-actions {
-  display: flex;
-  gap: 8px;
-  margin-top: 6px;
-}
-.campaign-admin-toggle-btn, .campaign-admin-delete-btn {
-  font-family: var(--font);
-  font-size: 0.72rem;
-  padding: 4px 10px;
-  border-radius: 999px;
-  border: 1px solid var(--border);
-  background: var(--surface);
-  cursor: pointer;
-}
-.campaign-admin-delete-btn { color: #b3261e; }
-
-.campaign-form-title {
-  font-size: 0.85rem;
-  font-weight: bold;
-  border-top: 1px solid var(--border);
-  padding-top: 12px;
-}
-.campaign-form {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  margin-top: 8px;
-}
-.campaign-form-row {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  font-size: 0.78rem;
-}
-.campaign-form-row input, .campaign-form-row select {
-  font-family: var(--font);
-  font-size: 0.85rem;
-  padding: 8px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-}
-.campaign-tier-row {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin-top: 4px;
-  font-size: 0.75rem;
-}
-.campaign-tier-row input {
-  width: 64px;
-  font-family: var(--font);
-  padding: 6px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-}
-.campaign-form-msg {
-  min-height: 1.2em;
-  font-size: 0.78rem;
-  text-align: center;
-}
-.campaign-form-msg.ok { color: #1b6e3c; }
-.campaign-form-msg.error { color: #b3261e; }
