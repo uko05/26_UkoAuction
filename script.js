@@ -760,10 +760,10 @@ function buildGridTile(listing, myUserId, isExpired) {
 
   if (listing.siteKey === 'omikuji') {
     const owned = (myCardBacks[listing.itemId] || 0) > 0;
-    const dot = document.createElement('span');
-    dot.className = `auction-tile-owned auction-tile-owned-${owned ? 'yes' : 'no'}`;
-    dot.title = owned ? s().badgeOwned : s().badgeNotOwned;
-    imgWrap.appendChild(dot);
+    const ownedBadge = document.createElement('span');
+    ownedBadge.className = `auction-tile-owned auction-tile-owned-${owned ? 'yes' : 'no'}`;
+    ownedBadge.textContent = owned ? s().badgeOwned : s().badgeNotOwned;
+    imgWrap.appendChild(ownedBadge);
   }
 
   const isMine = listing.sellerId === myUserId;
