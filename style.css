@@ -187,18 +187,6 @@ main {
 }
 .auction-tile-owned-yes { background: #2ea05a; }
 .auction-tile-owned-no { background: #999; }
-.auction-tile-buynow-badge {
-  position: absolute;
-  top: 0;
-  right: 0;
-  font-size: 0.6rem;
-  font-weight: bold;
-  color: #fff;
-  background: #e0562f;
-  padding: 2px 6px;
-  border-bottom-left-radius: 8px;
-  cursor: pointer;
-}
 .auction-tile-mine-badge {
   position: absolute;
   bottom: 0;
@@ -325,12 +313,6 @@ main {
   margin-top: 3px;
 }
 
-.auction-card-buynow {
-  font-size: 0.72rem;
-  color: #e0562f;
-  font-weight: bold;
-}
-
 .auction-card-time {
   font-size: 0.7rem;
   color: var(--muted);
@@ -364,11 +346,6 @@ main {
 }
 .auction-action-btn:hover { transform: translateY(-1px); }
 .auction-action-btn:active { transform: translateY(0); }
-
-.auction-buynow-btn {
-  color: #fff;
-  background: linear-gradient(180deg, #ff9472, #e0562f);
-}
 
 /* ===== モーダル(入札) ===== */
 .col-modal {

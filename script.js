@@ -1,6 +1,9 @@
 // script.js
 // うーこオークション: うーこの部屋の各サイトから出品されたアイテム(ukoMarketListings)を
-// 横断的に一覧・入札・即決購入できるサイト。出品自体は各サイト側(例: 14_GenshinOmikuji)で行う。
+// 横断的に一覧・入札できるサイト。出品自体は各サイト側(例: 14_GenshinOmikuji)で行う。
+// 即決(買い切り)機能は2026-09-19に廃止した(固定500UPの即決価格がガチャ券50UPを
+// 大きく上回っていたため、メイン垢で安くガチャを回して複製をサブ垢に即決購入させる
+// 自演両替の抜け道になっていた)。
 import { app, db } from './firebaseConfig.js';
 import {
   collection, doc, onSnapshot, runTransaction,
@@ -8,7 +11,7 @@ import {
 } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
 import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
 
-// ===== ログイン状態(入札・即決購入をアカウント登録者限定にするため。
+// ===== ログイン状態(入札をアカウント登録者限定にするため。
 // 一覧の閲覧自体は未登録でも可能にしたいので、そちらでは使わないこと) =====
 const auth = getAuth(app);
 let authUid = null;
@@ -37,7 +40,7 @@ function getUserId() {
 }
 
 // うーこポイント交換所(08_UPoint)ミッション「オークションを落札しよう」の達成フラグキー。
-// 入札で競り落とした場合(settleListing)・即決購入した場合(buyNow)のどちらでも立てる。
+// 入札で競り落とした場合(settleListing)に立てる。
 // UP付与自体はしない(08_UPoint側の「受け取る」操作で加算する二段階方式、他ミッションと同じ)。
 const AUCTION_WIN_MISSION_CLAIM_KEY = 'omikujiAuctionWin';
 
@@ -52,11 +55,10 @@ function siteLabel(siteKey) {
   return entry[currentLang()] || entry.ja;
 }
 
-// ガチャ券は08_UPoint側で50UP固定(2026-09時点)。開始=券の5分の1、即決=券の5倍という
-// 比率で運用する方針のため、ここは連動する自動計算ではなく固定値(出品側の14_GenshinOmikuji/
-// auction.jsと同じ値。片方を変更したらもう片方も手動で合わせること)。
+// ガチャ券は08_UPoint側で50UP固定(2026-09時点)。開始=券の5分の1という比率で運用する方針
+// のため、ここは連動する自動計算ではなく固定値(出品側の14_GenshinOmikuji/auction.jsと
+// 同じ値。片方を変更したらもう片方も手動で合わせること)。
 const AUCTION_START_PRICE = 25;
-const AUCTION_BUY_NOW_PRICE = 500;
 
 // ===== i18n =====
 const i18n = {
@@ -67,9 +69,7 @@ const i18n = {
     startLabel: '開始',
     currentLabel: '現在',
     noBid: 'まだ入札なし',
-    buyNowLabel: '即決',
     bidBtn: '入札する',
-    buyNowBtn: '即決で買う',
     yourListing: '（あなたの出品）',
     timeLeft: (h, m) => `残り${h}時間${m}分`,
     timeLeftMin: (m) => `残り${m}分`,
@@ -79,14 +79,10 @@ const i18n = {
     bidInvalid: '入札額は整数で入力してください。',
     bidNoPoints: 'UPが足りません。',
     bidOwn: '自分の出品には入札できません。',
-    loginRequired: '入札・即決購入にはアカウント登録（無料）が必要です。登録・ログインしてから利用してください。',
+    loginRequired: '入札にはアカウント登録（無料）が必要です。登録・ログインしてから利用してください。',
     bidEnded: 'このオークションは終了しています。',
     bidFailed: '入札に失敗しました。時間をおいて再度お試しください。',
     bidDone: '入札しました。',
-    buyNowConfirm: (name) => `「${name}」を${AUCTION_BUY_NOW_PRICE}UPで即決購入しますか？`,
-    buyNowNoPoints: 'UPが足りません。',
-    buyNowFailed: '購入に失敗しました。時間をおいて再度お試しください。',
-    buyNowDone: '購入しました！',
     myBidsBtn: '自分の入札',
     myBidsEmpty: 'まだ入札した商品はありません',
     badgeWinning: '入札中',
@@ -109,7 +105,7 @@ const i18n = {
     campaignBannerSellerBonus: (label, mult, until) => `🎉 ${label}: 出品が落札されると通常の${mult}倍のUPがもらえます！（${until}まで）`,
     campaignBannerListingBonus: (label, amount, until) => `🎉 ${label}: 出品するたび+${amount}UP！（${until}まで）`,
     campaignBannerListingCountBonus: (label, until) => `🎉 ${label}: 出品数に応じてボーナスUPがもらえます！（${until}まで）`,
-    campaignBannerBidderBonus: (label, rate, until) => `🎉 ${label}: 落札・即決購入すると支払額の${rate}%がUPで還元されます！（${until}まで）`,
+    campaignBannerBidderBonus: (label, rate, until) => `🎉 ${label}: 落札すると支払額の${rate}%がUPで還元されます！（${until}まで）`,
   },
   en: {
     pageTitle: 'Uko Auction',
@@ -118,9 +114,7 @@ const i18n = {
     startLabel: 'Start',
     currentLabel: 'Current',
     noBid: 'No bids yet',
-    buyNowLabel: 'Buy Now',
     bidBtn: 'Bid',
-    buyNowBtn: 'Buy Now',
     yourListing: '(Your listing)',
     timeLeft: (h, m) => `${h}h ${m}m left`,
     timeLeftMin: (m) => `${m}m left`,
@@ -130,14 +124,10 @@ const i18n = {
     bidInvalid: 'Please enter a whole number.',
     bidNoPoints: 'Not enough UP.',
     bidOwn: "You can't bid on your own listing.",
-    loginRequired: 'Bidding and Buy Now require a free account. Please register and log in first.',
+    loginRequired: 'Bidding requires a free account. Please register and log in first.',
     bidEnded: 'This auction has ended.',
     bidFailed: 'Failed to place bid. Please try again later.',
     bidDone: 'Bid placed!',
-    buyNowConfirm: (name) => `Buy "${name}" now for ${AUCTION_BUY_NOW_PRICE}UP?`,
-    buyNowNoPoints: 'Not enough UP.',
-    buyNowFailed: 'Purchase failed. Please try again later.',
-    buyNowDone: 'Purchased!',
     myBidsBtn: 'My Bids',
     myBidsEmpty: "You haven't bid on anything yet",
     badgeWinning: 'Winning',
@@ -160,7 +150,7 @@ const i18n = {
     campaignBannerSellerBonus: (label, mult, until) => `🎉 ${label}: Sellers get ${mult}x UP when their listing sells! (until ${until})`,
     campaignBannerListingBonus: (label, amount, until) => `🎉 ${label}: +${amount}UP every time you list an item! (until ${until})`,
     campaignBannerListingCountBonus: (label, until) => `🎉 ${label}: Bonus UP based on how many items you list! (until ${until})`,
-    campaignBannerBidderBonus: (label, rate, until) => `🎉 ${label}: Get ${rate}% of what you pay back as UP when you win or buy now! (until ${until})`,
+    campaignBannerBidderBonus: (label, rate, until) => `🎉 ${label}: Get ${rate}% of what you pay back as UP when you win! (until ${until})`,
   },
 };
 function currentLang() {
@@ -211,7 +201,7 @@ function showToast(text, isError) {
 //   listingBonus:      bonusAmount(出品するたび即座にもらえる定額UP。14_GenshinOmikuji側で適用)
 //   listingCountBonus: tiers([{count,bonus}, ...]。期間中の出品数が閾値を超えるたび
 //                      そのtierのbonusをもらえる。14_GenshinOmikuji側で適用・進捗管理)
-//   bidderBonus:       rate(落札額/即決価格に対する還元率%。支払額はそのままに、
+//   bidderBonus:       rate(落札額に対する還元率%。支払額はそのままに、
 //                      rate%分を別途UPで落札者へ還元する)
 // enabledは緊急停止用(期間内でもfalseなら無効)。複数のキャンペーンを同時開催できる
 // (同じtypeが複数アクティブな場合、sellerBonus/bidderBonusは最大値を採用、
@@ -362,67 +352,6 @@ async function placeBid(listing, amount) {
       NO_POINTS: s().bidNoPoints,
     };
     showToast(map[e.message] || s().bidFailed, true);
-  }
-}
-
-// ===== 即決購入（出品者⇔購入者をまたぐトランザクション。入札中だった人がいれば返金する） =====
-async function buyNow(listing) {
-  // 即決価格なしの出品はボタン自体を出していないが、念のため二重に防ぐ
-  // (Firestoreルール側にも同じガードあり)。
-  if (!listing.buyNowPrice) return;
-  const myUserId = getUserId();
-  if (listing.sellerId === myUserId) { showToast(s().bidOwn, true); return; }
-  if (!confirm(s().buyNowConfirm(listing.itemName))) return;
-
-  const listingRef = doc(db, 'ukoMarketListings', listing.id);
-  const myRef = doc(db, 'omikujiUsers', myUserId);
-  const sellerRef = doc(db, 'omikujiUsers', listing.sellerId);
-
-  try {
-    await runTransaction(db, async (tx) => {
-      const listingSnap = await tx.get(listingRef);
-      if (!listingSnap.exists()) throw new Error('NOT_FOUND');
-      const d = listingSnap.data();
-      if (d.status !== 'active' || (d.endsAt && d.endsAt.toMillis() <= Date.now())) throw new Error('ENDED');
-
-      const mySnap = await tx.get(myRef);
-      if (!mySnap.exists()) throw new Error('NO_USER_DOC');
-      const myPoints = mySnap.data().ukoPoints || 0;
-      if (myPoints < d.buyNowPrice) throw new Error('NO_POINTS');
-
-      const sellerSnap = await tx.get(sellerRef);
-
-      // 入札中だった人がいれば全額返金
-      if (d.currentBidderId) {
-        const prevRef = doc(db, 'omikujiUsers', d.currentBidderId);
-        const prevSnap = await tx.get(prevRef);
-        if (prevSnap.exists()) {
-          tx.update(prevRef, { ukoPoints: increment(d.currentBid) });
-        }
-      }
-
-      // bidderBonusキャンペーンが有効なら、支払額はそのままに一部をUPで還元する
-      // (支払いと同じukoPoints incrementにまとめて、差額分だけ動かす)
-      const cashback = bidderBonusPoints(d.buyNowPrice);
-      tx.update(myRef, {
-        ukoPoints: increment(cashback - d.buyNowPrice),
-        [d.returnField]: increment(1),
-        [`missionsAchieved.${AUCTION_WIN_MISSION_CLAIM_KEY}`]: true,
-      });
-      if (sellerSnap.exists()) {
-        // settleListingと同じくsellerBonusキャンペーンを適用する
-        const bonusPoints = Math.round(d.buyNowPrice * activeSellerBonusMultiplier());
-        tx.update(sellerRef, { ukoPoints: increment(bonusPoints) });
-      }
-      tx.update(listingRef, {
-        status: 'sold', soldVia: 'buyNow', soldPrice: d.buyNowPrice, soldTo: myUserId, soldAt: serverTimestamp(),
-      });
-    });
-    showToast(s().buyNowDone, false);
-  } catch (e) {
-    console.error('[auction] buy-now failed', e);
-    const map = { ENDED: s().bidEnded, NO_POINTS: s().buyNowNoPoints };
-    showToast(map[e.message] || s().buyNowFailed, true);
   }
 }
 
@@ -780,13 +709,6 @@ function buildListCard(listing, myUserId, isExpired) {
     : `${s().startLabel} ${listing.startPrice}UP（${s().noBid}）`;
   info.appendChild(priceRow);
 
-  if (listing.buyNowPrice) {
-    const buyNowRow = document.createElement('div');
-    buyNowRow.className = 'auction-card-buynow';
-    buyNowRow.textContent = `${s().buyNowLabel} ${listing.buyNowPrice}UP`;
-    info.appendChild(buyNowRow);
-  }
-
   const timeRow = document.createElement('div');
   timeRow.className = 'auction-card-time';
   timeRow.textContent = isExpired ? s().ended : fmtTimeLeft(listing.endsAt);
@@ -812,18 +734,6 @@ function buildListCard(listing, myUserId, isExpired) {
       openBidModal(listing);
     });
     actions.appendChild(bidBtn);
-
-    if (listing.buyNowPrice) {
-      const buyBtn = document.createElement('button');
-      buyBtn.type = 'button';
-      buyBtn.className = 'auction-action-btn auction-buynow-btn';
-      buyBtn.textContent = s().buyNowBtn;
-      buyBtn.addEventListener('click', async () => {
-        if (!(await isLoggedIn())) { showToast(s().loginRequired, true); return; }
-        buyNow(listing);
-      });
-      actions.appendChild(buyBtn);
-    }
   }
   card.appendChild(actions);
 
@@ -832,9 +742,7 @@ function buildListCard(listing, myUserId, isExpired) {
 
 // ===== タイル描画(グリッド表示。ヤフオク風、正方形サムネ+価格+残り時間の最小限セット) =====
 // タイル全体のクリックで入札ポップを開く(リスト表示の「入札する」ボタンと同じ動線)。
-// 即決購入はサムネ右上の小さいバッジをタップした時だけ発火させ(stopPropagationで
-// タイル本体のクリックと競合しないようにする)、自分の出品はクリックしても
-// 何も起きない画像拡大だけにする(入札できないため)。
+// 自分の出品はクリックしても何も起きない画像拡大だけにする(入札できないため)。
 function buildGridTile(listing, myUserId, isExpired) {
   const tile = document.createElement('div');
   tile.className = 'auction-tile';
@@ -865,20 +773,10 @@ function buildGridTile(listing, myUserId, isExpired) {
     mine.className = 'auction-tile-mine-badge';
     mine.textContent = s().yourListing;
     imgWrap.appendChild(mine);
-  } else if (listing.buyNowPrice && !isExpired) {
-    const badge = document.createElement('span');
-    badge.className = 'auction-tile-buynow-badge';
-    badge.textContent = s().buyNowLabel;
-    badge.addEventListener('click', async (e) => {
-      e.stopPropagation();
-      if (!(await isLoggedIn())) { showToast(s().loginRequired, true); return; }
-      buyNow(listing);
-    });
-    imgWrap.appendChild(badge);
   }
 
   // 自分の入札ステータス(入札中/更新あり)。サムネに重ねて、下寄せの小さいバッジで表示する
-  // (画像上部は所持済/未所持ドットや即決バッジが既にあるため)。
+  // (画像上部は所持済/未所持ドットが既にあるため)。
   if (!isMine && myBidListingIds.includes(listing.id)) {
     const trackedData = myBidListingsData.get(listing.id) || listing;
     const myStatus = myBidStatus(trackedData, myUserId);
