@@ -589,6 +589,20 @@ function campaignSummaryText(c) {
   return c.label || '';
 }
 
+// 種類ごとの既定バナー(99_SharedImage、2026-09-20追加)。キャンペーン作成時にURLを
+// 入力しなくても、typeから自動で対応する画像を出す。campaign.bannerImageUrlを
+// 個別に設定すればそちらが優先される(既定を上書きしたい場合の個別指定用)。
+// 24_AccountCenter/admin/admin.jsのプレビュー表示にも同じ内容を持たせているので、
+// 画像を差し替えたらそちらも合わせること。
+const CAMPAIGN_TYPE_BANNER_URLS = {
+  listingBonus: 'https://cdn.jsdelivr.net/gh/uko05/99_SharedImage@main/01_Genshin/auction/%E5%87%BA%E5%93%81%E5%8D%B3%E6%99%82%E3%83%9C%E3%83%BC%E3%83%8A%E3%82%B9.png',
+  sellerBonus: 'https://cdn.jsdelivr.net/gh/uko05/99_SharedImage@main/01_Genshin/auction/%E8%90%BD%E6%9C%AD%E6%99%82%E3%83%9C%E3%83%BC%E3%83%8A%E3%82%B9.png',
+  listingCountBonus: 'https://cdn.jsdelivr.net/gh/uko05/99_SharedImage@main/01_Genshin/auction/%E5%87%BA%E5%93%81%E6%95%B0%E3%83%9C%E3%83%BC%E3%83%8A%E3%82%B9.png',
+  bidderBonus: 'https://cdn.jsdelivr.net/gh/uko05/99_SharedImage@main/01_Genshin/auction/%E8%90%BD%E6%9C%AD%E6%99%82%E3%82%AD%E3%83%A3%E3%83%83%E3%82%B7%E3%83%A5%E3%83%90%E3%83%83%E3%82%AF.png',
+};
+
+// 複数のキャンペーンが同時開催中の場合、ここでactive全件をループしているので、
+// バナー・文言ともそれぞれ分の行が積み重なって表示される(1つに絞らない)。
 function renderCampaignBanner() {
   const el = document.getElementById('campaign-banner');
   if (!el) return;
@@ -596,10 +610,11 @@ function renderCampaignBanner() {
   el.innerHTML = '';
   el.hidden = active.length === 0;
   active.forEach((c) => {
-    if (c.bannerImageUrl) {
+    const bannerUrl = c.bannerImageUrl || CAMPAIGN_TYPE_BANNER_URLS[c.type];
+    if (bannerUrl) {
       const img = document.createElement('img');
       img.className = 'campaign-banner-img';
-      img.src = c.bannerImageUrl;
+      img.src = bannerUrl;
       img.alt = c.label || '';
       el.appendChild(img);
     }
