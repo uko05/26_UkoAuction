@@ -115,6 +115,18 @@ const i18n = {
     campaignBannerListingBonus: (label, amount, until) => `🎉 ${label}: 出品するたび+${amount}UP！（${until}まで）`,
     campaignBannerListingCountBonus: (label, until) => `🎉 ${label}: 出品数に応じてボーナスUPがもらえます！（${until}まで）`,
     campaignBannerBidderBonus: (label, rate, until) => `🎉 ${label}: 落札すると支払額の${rate}%がUPで還元されます！（${until}まで）`,
+    campaignTypeSellerBonus: '出品者ボーナス（落札額×倍率）',
+    campaignTypeListingBonus: '出品即時ボーナス（定額）',
+    campaignTypeListingCountBonus: '出品数ボーナス（段階制）',
+    campaignTypeBidderBonus: '落札者キャッシュバック（落札額の%還元）',
+    campaignDetailTypeLabel: '種類',
+    campaignDetailContentLabel: '内容',
+    campaignDetailPeriodLabel: '期間',
+    campaignDetailMultiplier: (mult) => `×${mult}`,
+    campaignDetailBonusAmount: (n) => `出品するたび +${n}UP`,
+    campaignDetailTiers: (tiers) => tiers.map((t) => `${t.count}件で+${t.bonus}UP`).join(' / '),
+    campaignDetailRate: (rate) => `支払額の${rate}%を還元`,
+    campaignDetailPeriodValue: (from, to) => `${from} 〜 ${to}`,
   },
   en: {
     pageTitle: 'Uko Auction',
@@ -160,6 +172,18 @@ const i18n = {
     campaignBannerListingBonus: (label, amount, until) => `🎉 ${label}: +${amount}UP every time you list an item! (until ${until})`,
     campaignBannerListingCountBonus: (label, until) => `🎉 ${label}: Bonus UP based on how many items you list! (until ${until})`,
     campaignBannerBidderBonus: (label, rate, until) => `🎉 ${label}: Get ${rate}% of what you pay back as UP when you win! (until ${until})`,
+    campaignTypeSellerBonus: 'Seller Bonus (sale price × multiplier)',
+    campaignTypeListingBonus: 'Instant Listing Bonus (flat)',
+    campaignTypeListingCountBonus: 'Listing Count Bonus (tiered)',
+    campaignTypeBidderBonus: 'Bidder Cashback (% of sale price)',
+    campaignDetailTypeLabel: 'Type',
+    campaignDetailContentLabel: 'Details',
+    campaignDetailPeriodLabel: 'Period',
+    campaignDetailMultiplier: (mult) => `×${mult}`,
+    campaignDetailBonusAmount: (n) => `+${n}UP every time you list`,
+    campaignDetailTiers: (tiers) => tiers.map((t) => `${t.count} listings → +${t.bonus}UP`).join(' / '),
+    campaignDetailRate: (rate) => `${rate}% of what you pay is refunded`,
+    campaignDetailPeriodValue: (from, to) => `${from} – ${to}`,
   },
 };
 function currentLang() {
@@ -589,6 +613,51 @@ function campaignSummaryText(c) {
   return c.label || '';
 }
 
+// ===== キャンペーン詳細ポップ(バナー右上の「？」から開く、2026-09-20追加) =====
+function campaignTypeLabel(c) {
+  if (c.type === 'sellerBonus') return s().campaignTypeSellerBonus;
+  if (c.type === 'listingBonus') return s().campaignTypeListingBonus;
+  if (c.type === 'listingCountBonus') return s().campaignTypeListingCountBonus;
+  if (c.type === 'bidderBonus') return s().campaignTypeBidderBonus;
+  return c.type;
+}
+
+function campaignDetailValueText(c) {
+  if (c.type === 'sellerBonus') return s().campaignDetailMultiplier(c.multiplier);
+  if (c.type === 'listingBonus') return s().campaignDetailBonusAmount(c.bonusAmount);
+  if (c.type === 'listingCountBonus') return s().campaignDetailTiers(c.tiers || []);
+  if (c.type === 'bidderBonus') return s().campaignDetailRate(c.rate);
+  return '';
+}
+
+function openCampaignDetailModal(c) {
+  const modal = document.getElementById('campaign-detail-modal');
+  const title = document.getElementById('campaign-detail-title');
+  const body = document.getElementById('campaign-detail-body');
+  if (!modal || !title || !body) return;
+  title.textContent = c.label || '';
+  const period = s().campaignDetailPeriodValue(fmtCampaignDate(c.startsAt), fmtCampaignDate(c.endsAt));
+  body.innerHTML = `
+    <div class="campaign-detail-row"><span class="campaign-detail-label">${escapeHtmlLite(s().campaignDetailTypeLabel)}</span><span>${escapeHtmlLite(campaignTypeLabel(c))}</span></div>
+    <div class="campaign-detail-row"><span class="campaign-detail-label">${escapeHtmlLite(s().campaignDetailContentLabel)}</span><span>${escapeHtmlLite(campaignDetailValueText(c))}</span></div>
+    <div class="campaign-detail-row"><span class="campaign-detail-label">${escapeHtmlLite(s().campaignDetailPeriodLabel)}</span><span>${escapeHtmlLite(period)}</span></div>
+  `;
+  modal.style.display = 'flex';
+}
+
+function closeCampaignDetailModal() {
+  const modal = document.getElementById('campaign-detail-modal');
+  if (modal) modal.style.display = 'none';
+}
+
+// このファイルには汎用のescapeHtmlが無いため(サーバー生成でなくFirestoreの値を
+// そのままinnerHTMLへ入れる箇所がここだけなので)、最小限のエスケープだけ用意する。
+function escapeHtmlLite(str) {
+  return String(str ?? '').replace(/[&<>"']/g, (ch) => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+  }[ch]));
+}
+
 // 種類ごとの既定バナー(99_SharedImage、2026-09-20追加)。キャンペーン作成時にURLを
 // 入力しなくても、typeから自動で対応する画像を出す。campaign.bannerImageUrlを
 // 個別に設定すればそちらが優先される(既定を上書きしたい場合の個別指定用)。
@@ -612,11 +681,25 @@ function renderCampaignBanner() {
   active.forEach((c) => {
     const bannerUrl = c.bannerImageUrl || CAMPAIGN_TYPE_BANNER_URLS[c.type];
     if (bannerUrl) {
+      const wrap = document.createElement('div');
+      wrap.className = 'campaign-banner-item';
+
       const img = document.createElement('img');
       img.className = 'campaign-banner-img';
       img.src = bannerUrl;
       img.alt = c.label || '';
-      el.appendChild(img);
+      wrap.appendChild(img);
+
+      // バナー右上の「？」: 押すとそのキャンペーンの種類・内容・期間を詳細ポップで見せる。
+      const infoBtn = document.createElement('button');
+      infoBtn.type = 'button';
+      infoBtn.className = 'campaign-banner-info-btn';
+      infoBtn.textContent = '？';
+      infoBtn.setAttribute('aria-label', 'キャンペーン詳細');
+      infoBtn.addEventListener('click', () => openCampaignDetailModal(c));
+      wrap.appendChild(infoBtn);
+
+      el.appendChild(wrap);
     }
     const row = document.createElement('div');
     row.textContent = campaignSummaryText(c);
@@ -944,6 +1027,11 @@ function initAuctionList() {
   if (bidBackdrop) bidBackdrop.addEventListener('click', closeBidModal);
   const bidSubmit = document.getElementById('auction-bid-submit');
   if (bidSubmit) bidSubmit.addEventListener('click', submitBid);
+
+  const campaignDetailClose = document.getElementById('campaign-detail-close');
+  if (campaignDetailClose) campaignDetailClose.addEventListener('click', closeCampaignDetailModal);
+  const campaignDetailBackdrop = document.querySelector('#campaign-detail-modal .col-modal-backdrop');
+  if (campaignDetailBackdrop) campaignDetailBackdrop.addEventListener('click', closeCampaignDetailModal);
 
   const lightbox = document.getElementById('auction-lightbox');
   if (lightbox) lightbox.addEventListener('click', () => lightbox.classList.remove('visible'));

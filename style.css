@@ -601,6 +601,7 @@ main {
 }
 
 /* キャンペーンバナー画像。サイズ・配置は運用しながら調整する前提の暫定値 */
+.campaign-banner-item { position: relative; }
 .campaign-banner-img {
   display: block;
   width: 100%;
@@ -608,4 +609,34 @@ main {
   object-fit: cover;
   border-radius: 8px;
 }
+.campaign-banner-info-btn {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  font-size: 0.78rem;
+  font-weight: bold;
+  line-height: 1;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.campaign-banner-info-btn:hover { background: rgba(0, 0, 0, 0.75); }
+
+.campaign-detail-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 0.85rem;
+}
+.campaign-detail-row:last-child { border-bottom: none; }
+.campaign-detail-label { color: var(--muted); flex-shrink: 0; }
 

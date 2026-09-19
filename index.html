@@ -6,7 +6,7 @@
     <meta name="description" content="うーこの部屋の各サイトで出品されたアイテムを横断的に一覧・入札できるオークションサイトです。">
 
     <title>うーこオークション - うーこの部屋</title>
-    <link rel="stylesheet" href="style.css?v=4">
+    <link rel="stylesheet" href="style.css?v=5">
 
     <!-- Favicon -->
     <link rel="icon" href="https://cdn.jsdelivr.net/gh/uko05/99_SharedImage@main/00_common/favicon_io/favicon.ico" type="image/x-icon">
@@ -79,6 +79,16 @@
       </div>
     </div>
 
+    <!-- キャンペーン詳細ポップ(バナー右上の「？」から開く) -->
+    <div id="campaign-detail-modal" class="col-modal" style="display:none;">
+      <div class="col-modal-backdrop"></div>
+      <div class="col-modal-content">
+        <button id="campaign-detail-close" class="col-modal-close" aria-label="close">×</button>
+        <p class="bid-modal-title" id="campaign-detail-title"></p>
+        <div id="campaign-detail-body" class="campaign-detail-body"></div>
+      </div>
+    </div>
+
     <!-- 固定フッター: 自分の入札(バッジは「更新されました」件数) -->
     <div class="auction-fixed-footer">
       <button type="button" id="auction-mybids-btn" class="auction-mybids-fab">
@@ -101,7 +111,7 @@
         <span id="uko-account-status-slot"></span>
     </footer>
 
-    <span id="site-version" class="site-version">v1.5</span>
+    <span id="site-version" class="site-version">v1.6</span>
 
     <script type="module" src="script.js"></script>
     <script src="https://uko05.github.io/TopPage00/shared/sidebar.js"></script>
