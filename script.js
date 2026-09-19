@@ -111,6 +111,9 @@ const i18n = {
     sortBidCount: '入札件数が多い順',
     listingCount: (n) => `${n}件出品中`,
     listingCountMax: (n) => `${n}件以上出品中`,
+    listingCountPageSuffix: (page, totalPages) => `（${page}/${totalPages}ページ）`,
+    pagerPrevBtn: '前のページ',
+    pagerNextBtn: '次のページ',
     campaignBannerSellerBonus: (mult, until) => `🎉 出品者ボーナス開催中！出品が落札されると通常の${mult}倍のUPがもらえます（${until}まで）`,
     campaignBannerListingBonus: (amount, until) => `🎉 出品即時ボーナス開催中！出品するたび+${amount}UP（${until}まで）`,
     campaignBannerListingCountBonus: (until) => `🎉 出品数ボーナス開催中！出品数に応じてボーナスUPがもらえます（${until}まで）`,
@@ -169,6 +172,9 @@ const i18n = {
     sortBidCount: 'Most bids',
     listingCount: (n) => `${n} item${n === 1 ? '' : 's'} listed`,
     listingCountMax: (n) => `${n}+ items listed`,
+    listingCountPageSuffix: (page, totalPages) => ` (page ${page}/${totalPages})`,
+    pagerPrevBtn: 'Previous',
+    pagerNextBtn: 'Next',
     campaignBannerSellerBonus: (mult, until) => `🎉 Seller Bonus is live! Sellers get ${mult}x UP when their listing sells (until ${until})`,
     campaignBannerListingBonus: (amount, until) => `🎉 Instant Listing Bonus is live! +${amount}UP every time you list an item (until ${until})`,
     campaignBannerListingCountBonus: (until) => `🎉 Listing Count Bonus is live! Bonus UP based on how many items you list (until ${until})`,
@@ -712,6 +718,14 @@ function fmtTimeLeft(endsAt) {
 let latestListings = [];
 let deepLinkHandled = false;
 
+// ===== ページ送り(2026-09-20追加) =====
+// 以前はFirestoreクエリのlimit自体が100件で、101件目以降がそもそも一覧に出てこなかった
+// (「100件以上出品中」の表示はここで頭打ちになっていることの目印だった)。クエリの
+// limitを大きく引き上げ(AUCTION_LIST_QUERY_LIMIT)、代わりに表示側でAUCTION_PAGE_SIZE
+// 件ずつのページ送りにすることで、実在する出品を漏れなくたどれるようにした。
+const AUCTION_PAGE_SIZE = 50;
+let auctionCurrentPage = 1;
+
 // ===== 並べ替え =====
 const AUCTION_SORT_KEY = 'ukoAuction_sortMode';
 function getSortMode() {
@@ -748,7 +762,9 @@ function initSortSelect() {
   select.value = getSortMode();
   select.addEventListener('change', () => {
     localStorage.setItem(AUCTION_SORT_KEY, select.value);
+    auctionCurrentPage = 1;
     renderAuctionList(latestListings);
+    updateListingCount();
   });
 }
 
@@ -943,12 +959,14 @@ function buildGridTile(listing, myUserId, isExpired) {
 
 function renderAuctionList(rawListings) {
   const listEl = document.getElementById('auction-list');
+  const pagerEl = document.getElementById('auction-pager');
   if (!listEl) return;
   const myUserId = getUserId();
   const listings = sortListings(rawListings);
   const mode = getViewMode();
   listEl.className = mode === 'grid' ? 'auction-list-grid' : 'auction-list';
   listEl.innerHTML = '';
+  if (pagerEl) pagerEl.innerHTML = '';
 
   if (listings.length === 0) {
     const p = document.createElement('p');
@@ -958,17 +976,64 @@ function renderAuctionList(rawListings) {
     return;
   }
 
+  // 期限切れの精算トリガーはページ全体(全件)に対して行う。表示だけ後で
+  // ページ単位に絞るので、2ページ目以降にある期限切れ出品も誰かがサイトを
+  // 開いた時点でちゃんと精算される。
   listings.forEach((listing) => {
     const isExpired = listing.endsAt && listing.endsAt.toMillis() <= Date.now();
-    if (isExpired) { settleListing(listing.id); }
+    if (isExpired) settleListing(listing.id);
+  });
+
+  const totalPages = Math.max(1, Math.ceil(listings.length / AUCTION_PAGE_SIZE));
+  auctionCurrentPage = Math.min(Math.max(1, auctionCurrentPage), totalPages);
+  const pageStart = (auctionCurrentPage - 1) * AUCTION_PAGE_SIZE;
+  const pageListings = listings.slice(pageStart, pageStart + AUCTION_PAGE_SIZE);
+
+  pageListings.forEach((listing) => {
+    const isExpired = listing.endsAt && listing.endsAt.toMillis() <= Date.now();
     const node = mode === 'grid'
       ? buildGridTile(listing, myUserId, isExpired)
       : buildListCard(listing, myUserId, isExpired);
     listEl.appendChild(node);
   });
 
+  if (pagerEl && totalPages > 1) {
+    const prevBtn = document.createElement('button');
+    prevBtn.type = 'button';
+    prevBtn.className = 'auction-pager-btn';
+    prevBtn.textContent = s().pagerPrevBtn;
+    prevBtn.disabled = auctionCurrentPage <= 1;
+    prevBtn.addEventListener('click', () => {
+      auctionCurrentPage -= 1;
+      renderAuctionList(latestListings);
+      updateListingCount();
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    });
+
+    const label = document.createElement('span');
+    label.className = 'auction-pager-label';
+    label.textContent = `${auctionCurrentPage} / ${totalPages}`;
+
+    const nextBtn = document.createElement('button');
+    nextBtn.type = 'button';
+    nextBtn.className = 'auction-pager-btn';
+    nextBtn.textContent = s().pagerNextBtn;
+    nextBtn.disabled = auctionCurrentPage >= totalPages;
+    nextBtn.addEventListener('click', () => {
+      auctionCurrentPage += 1;
+      renderAuctionList(latestListings);
+      updateListingCount();
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    });
+
+    pagerEl.appendChild(prevBtn);
+    pagerEl.appendChild(label);
+    pagerEl.appendChild(nextBtn);
+  }
+
   // ディープリンク(?listing=<id>)で来た場合、該当アイテムが見つかり次第、入札ポップを自動で開く
-  // (一度開いたら、閉じた後の再描画で再度開かないようにdeepLinkHandledで一回だけに制限する)
+  // (ページを跨いでいても全件(listings)から探す。一度開いたら、閉じた後の再描画で
+  // 再度開かないようにdeepLinkHandledで一回だけに制限する)
   const wantedListingId = new URLSearchParams(location.search).get('listing');
   if (wantedListingId && !deepLinkHandled) {
     const wanted = listings.find((l) => l.id === wantedListingId);
@@ -983,14 +1048,18 @@ function renderAuctionList(rawListings) {
 }
 
 // ===== 出品件数表示 =====
-// 一覧クエリのlimit件数と同じ値を上限として持っておき、上限に達している場合は
-// 「ちょうどこの件数」ではなく「以上」であることが伝わる表示にする。
-const AUCTION_LIST_QUERY_LIMIT = 100;
+// 一覧クエリのlimit件数と同じ値を上限として持っておき、万一これに達するほど出品が
+// 積み上がった場合は「ちょうどこの件数」ではなく「以上」であることが伝わる表示にする
+// (通常の運用では実質無制限とみなせる件数にしてある)。表示自体はAUCTION_PAGE_SIZE件
+// ずつのページ送りなので、この件数分すべてたどって見られる。
+const AUCTION_LIST_QUERY_LIMIT = 500;
 function updateListingCount() {
   const el = document.getElementById('auction-listing-count');
   if (!el) return;
   const count = latestListings.length;
-  el.textContent = count >= AUCTION_LIST_QUERY_LIMIT ? s().listingCountMax(count) : s().listingCount(count);
+  const base = count >= AUCTION_LIST_QUERY_LIMIT ? s().listingCountMax(count) : s().listingCount(count);
+  const totalPages = Math.max(1, Math.ceil(count / AUCTION_PAGE_SIZE));
+  el.textContent = totalPages > 1 ? base + s().listingCountPageSuffix(auctionCurrentPage, totalPages) : base;
 }
 
 // ===== 初期化 =====
