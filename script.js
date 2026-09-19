@@ -127,6 +127,7 @@ const i18n = {
     campaignDetailTiers: (tiers) => tiers.map((t) => `${t.count}件で+${t.bonus}UP`).join(' / '),
     campaignDetailRate: (rate) => `支払額の${rate}%を還元`,
     campaignDetailPeriodValue: (from, to) => `${from} 〜 ${to}`,
+    campaignDetailTimingNote: '※ 出品された時点でこのキャンペーンが開催中だった出品にだけ適用されます（落札が決まるのは出品から最短でも24時間後なので、購入・落札した時点ではなく出品された時点で判定しています）。',
   },
   en: {
     pageTitle: 'Uko Auction',
@@ -184,6 +185,7 @@ const i18n = {
     campaignDetailTiers: (tiers) => tiers.map((t) => `${t.count} listings → +${t.bonus}UP`).join(' / '),
     campaignDetailRate: (rate) => `${rate}% of what you pay is refunded`,
     campaignDetailPeriodValue: (from, to) => `${from} – ${to}`,
+    campaignDetailTimingNote: '※ Applies only to listings that were created while this campaign was live (settlement happens at least 24 hours after listing, so this is judged at listing time, not at the moment of purchase/win).',
   },
 };
 function currentLang() {
@@ -269,31 +271,15 @@ function isCampaignActive(c) {
   return c.startsAt?.toMillis() <= now && now <= c.endsAt?.toMillis();
 }
 
-function activeCampaignsOfType(type) {
-  return latestCampaigns.filter((c) => c.type === type && isCampaignActive(c));
-}
-
-// 同時に複数のsellerBonusキャンペーンが有効な場合、乗算で重ねると際限なく増えて
-// しまうため、最大倍率のものだけを採用する(1つも無ければ通常通り1倍)。
-function activeSellerBonusMultiplier() {
-  const active = activeCampaignsOfType('sellerBonus');
-  if (!active.length) return 1;
-  return Math.max(1, ...active.map((c) => c.multiplier || 1));
-}
-
-// 落札者(買う側)向けのキャッシュバック。落札額はそのまま支払った上で、
-// 落札額のrate%が別途UPで還元される。sellerBonusと同じ理由で、複数有効な場合も
-// 合算せず最大rateのものだけを採用する(1つも無ければ0%)。
-function activeBidderBonusRate() {
-  const active = activeCampaignsOfType('bidderBonus');
-  if (!active.length) return 0;
-  return Math.max(0, ...active.map((c) => c.rate || 0));
-}
-function bidderBonusPoints(price) {
-  return Math.round(price * activeBidderBonusRate() / 100);
-}
-
 // ===== 期限切れオークションの精算（誰かが一覧を開いた時に遅延実行する） =====
+// sellerBonus/bidderBonusは、ここ(精算時)ではなく出品時点(14_GenshinOmikuji/
+// auction.jsのcreateListing)で有効だったキャンペーンの倍率/還元率を出品ドキュメント
+// (sellerBonusMultiplier/bidderBonusRate)にスナップショットしてあり、それをそのまま使う
+// (2026-09-20変更)。出品期間は最短24時間あるため、精算はキャンペーン期間が終わった
+// 後になることが多く、精算時点でその都度キャンペーンの有無を判定すると「出品した時は
+// 開催中だったのに、売れた頃には終わっていて恩恵が付かない」という事態になっていた。
+// 出品時点の値を確定で使うことで、出品者・入札者どちらから見ても「出品/入札した時に
+// 開催中だったキャンペーンは、いつ決着しても適用される」という直感的な挙動になる。
 async function settleListing(listingId) {
   const ref = doc(db, 'ukoMarketListings', listingId);
   try {
@@ -309,8 +295,9 @@ async function settleListing(listingId) {
         const sellerRef = doc(db, 'omikujiUsers', d.sellerId);
         const [winnerSnap, sellerSnap] = await Promise.all([tx.get(winnerRef), tx.get(sellerRef)]);
         if (winnerSnap.exists()) {
-          // bidderBonusキャンペーンが有効なら、支払額はそのままに一部をUPで還元する
-          const cashback = bidderBonusPoints(d.currentBid);
+          // bidderBonusRate(出品時点でのスナップショット)が入っていれば、支払額は
+          // そのままに一部をUPで還元する。
+          const cashback = Math.round(d.currentBid * (d.bidderBonusRate || 0) / 100);
           const winnerUpdates = {
             [d.returnField]: increment(1),
             [`missionsAchieved.${AUCTION_WIN_MISSION_CLAIM_KEY}`]: true,
@@ -324,9 +311,9 @@ async function settleListing(listingId) {
           tx.update(winnerRef, winnerUpdates);
         }
         if (sellerSnap.exists()) {
-          // sellerBonusキャンペーンが有効なら、落札額そのままではなく倍率を掛けて渡す
-          // (Firestoreの整数運用に合わせ四捨五入)。
-          const bonusPoints = Math.round(d.currentBid * activeSellerBonusMultiplier());
+          // sellerBonusMultiplier(出品時点でのスナップショット、無ければ1倍)を
+          // 落札額に掛けて渡す(Firestoreの整数運用に合わせ四捨五入)。
+          const bonusPoints = Math.round(d.currentBid * (d.sellerBonusMultiplier || 1));
           tx.update(sellerRef, { ukoPoints: increment(bonusPoints) });
           tx.set(doc(collection(db, 'ukoPointsLog')), ukoPointsLogEntry(
             d.sellerId, bonusPoints, 'auctionSale', { listingId, itemName: d.itemName, soldPrice: d.currentBid }
@@ -637,10 +624,16 @@ function openCampaignDetailModal(c) {
   if (!modal || !title || !body) return;
   title.textContent = campaignTypeLabel(c);
   const period = s().campaignDetailPeriodValue(fmtCampaignDate(c.startsAt), fmtCampaignDate(c.endsAt));
+  // sellerBonus/bidderBonusは出品時点でのスナップショットで決まる(このファイル冒頭の
+  // settleListingコメント参照)ため、購入者側が誤解しないようその旨を明記しておく。
+  const timingNote = (c.type === 'sellerBonus' || c.type === 'bidderBonus')
+    ? `<p class="campaign-detail-note">${escapeHtmlLite(s().campaignDetailTimingNote)}</p>`
+    : '';
   body.innerHTML = `
     <div class="campaign-detail-row"><span class="campaign-detail-label">${escapeHtmlLite(s().campaignDetailTypeLabel)}</span><span>${escapeHtmlLite(campaignTypeLabel(c))}</span></div>
     <div class="campaign-detail-row"><span class="campaign-detail-label">${escapeHtmlLite(s().campaignDetailContentLabel)}</span><span>${escapeHtmlLite(campaignDetailValueText(c))}</span></div>
     <div class="campaign-detail-row"><span class="campaign-detail-label">${escapeHtmlLite(s().campaignDetailPeriodLabel)}</span><span>${escapeHtmlLite(period)}</span></div>
+    ${timingNote}
   `;
   modal.style.display = 'flex';
 }

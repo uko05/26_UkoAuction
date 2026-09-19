@@ -639,4 +639,10 @@ main {
 }
 .campaign-detail-row:last-child { border-bottom: none; }
 .campaign-detail-label { color: var(--muted); flex-shrink: 0; }
+.campaign-detail-note {
+  margin-top: 10px;
+  font-size: 0.72rem;
+  color: var(--muted);
+  line-height: 1.5;
+}
 
