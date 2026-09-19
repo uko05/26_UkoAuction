@@ -98,6 +98,7 @@ const i18n = {
     badgeOutbid: '更新あり',
     badgeOwned: '所持済',
     badgeNotOwned: '未所持',
+    badgeCampaign: 'キャンペーン対象',
     statusWinning: '入札中（最高額）',
     statusOutbid: '更新されました（他の人が上回っています）',
     statusWon: '落札しました！',
@@ -159,6 +160,7 @@ const i18n = {
     badgeOutbid: 'Outbid',
     badgeOwned: 'Owned',
     badgeNotOwned: 'Not owned',
+    badgeCampaign: 'Campaign Bonus',
     statusWinning: 'Winning (highest bid)',
     statusOutbid: "Outbid (someone else's bid is higher)",
     statusWon: 'You won it!',
@@ -797,6 +799,14 @@ function initViewToggle() {
   });
 }
 
+// この出品が(出品時点でスナップショットした)sellerBonus/bidderBonusキャンペーンの
+// 対象になっているかどうか。listingBonus/listingCountBonusは出品時に即座にUPを
+// 払って終わりで出品ドキュメント自体には何も残らないため、ここでは判定しない
+// (このバッジは「この出品自体に今も紐づいている特典があるか」を示す用途)。
+function isListingCampaignEligible(listing) {
+  return (listing.sellerBonusMultiplier || 1) > 1 || (listing.bidderBonusRate || 0) > 0;
+}
+
 // ===== カード描画(リスト表示。従来通りの横長カード、ボタンが全部並ぶ) =====
 function buildListCard(listing, myUserId, isExpired) {
   const card = document.createElement('div');
@@ -828,6 +838,15 @@ function buildListCard(listing, myUserId, isExpired) {
     ownedEl.className = `auction-card-owned auction-card-owned-${owned ? 'yes' : 'no'}`;
     ownedEl.textContent = owned ? s().badgeOwned : s().badgeNotOwned;
     info.appendChild(ownedEl);
+  }
+
+  // キャンペーン対象バッジ。所持済/未所持のすぐ下(別行)に出したいので、
+  // display:blockにしてある(他のバッジは横並びのinline-block)。
+  if (isListingCampaignEligible(listing)) {
+    const campaignEl = document.createElement('span');
+    campaignEl.className = 'auction-card-campaign';
+    campaignEl.textContent = s().badgeCampaign;
+    info.appendChild(campaignEl);
   }
 
   if (myBidListingIds.includes(listing.id)) {
@@ -909,6 +928,14 @@ function buildGridTile(listing, myUserId, isExpired) {
     ownedBadge.className = `auction-tile-owned auction-tile-owned-${owned ? 'yes' : 'no'}`;
     ownedBadge.textContent = owned ? s().badgeOwned : s().badgeNotOwned;
     imgWrap.appendChild(ownedBadge);
+  }
+
+  // キャンペーン対象バッジ。所持済/未所持バッジのすぐ下に重ねる。
+  if (isListingCampaignEligible(listing)) {
+    const campaignBadge = document.createElement('span');
+    campaignBadge.className = 'auction-tile-campaign';
+    campaignBadge.textContent = s().badgeCampaign;
+    imgWrap.appendChild(campaignBadge);
   }
 
   const isMine = listing.sellerId === myUserId;
