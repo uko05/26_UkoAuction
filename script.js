@@ -111,10 +111,10 @@ const i18n = {
     sortBidCount: '入札件数が多い順',
     listingCount: (n) => `${n}件出品中`,
     listingCountMax: (n) => `${n}件以上出品中`,
-    campaignBannerSellerBonus: (label, mult, until) => `🎉 ${label}: 出品が落札されると通常の${mult}倍のUPがもらえます！（${until}まで）`,
-    campaignBannerListingBonus: (label, amount, until) => `🎉 ${label}: 出品するたび+${amount}UP！（${until}まで）`,
-    campaignBannerListingCountBonus: (label, until) => `🎉 ${label}: 出品数に応じてボーナスUPがもらえます！（${until}まで）`,
-    campaignBannerBidderBonus: (label, rate, until) => `🎉 ${label}: 落札すると支払額の${rate}%がUPで還元されます！（${until}まで）`,
+    campaignBannerSellerBonus: (mult, until) => `🎉 出品者ボーナス開催中！出品が落札されると通常の${mult}倍のUPがもらえます（${until}まで）`,
+    campaignBannerListingBonus: (amount, until) => `🎉 出品即時ボーナス開催中！出品するたび+${amount}UP（${until}まで）`,
+    campaignBannerListingCountBonus: (until) => `🎉 出品数ボーナス開催中！出品数に応じてボーナスUPがもらえます（${until}まで）`,
+    campaignBannerBidderBonus: (rate, until) => `🎉 落札者キャッシュバック開催中！落札すると支払額の${rate}%がUPで還元されます（${until}まで）`,
     campaignTypeSellerBonus: '出品者ボーナス（落札額×倍率）',
     campaignTypeListingBonus: '出品即時ボーナス（定額）',
     campaignTypeListingCountBonus: '出品数ボーナス（段階制）',
@@ -168,10 +168,10 @@ const i18n = {
     sortBidCount: 'Most bids',
     listingCount: (n) => `${n} item${n === 1 ? '' : 's'} listed`,
     listingCountMax: (n) => `${n}+ items listed`,
-    campaignBannerSellerBonus: (label, mult, until) => `🎉 ${label}: Sellers get ${mult}x UP when their listing sells! (until ${until})`,
-    campaignBannerListingBonus: (label, amount, until) => `🎉 ${label}: +${amount}UP every time you list an item! (until ${until})`,
-    campaignBannerListingCountBonus: (label, until) => `🎉 ${label}: Bonus UP based on how many items you list! (until ${until})`,
-    campaignBannerBidderBonus: (label, rate, until) => `🎉 ${label}: Get ${rate}% of what you pay back as UP when you win! (until ${until})`,
+    campaignBannerSellerBonus: (mult, until) => `🎉 Seller Bonus is live! Sellers get ${mult}x UP when their listing sells (until ${until})`,
+    campaignBannerListingBonus: (amount, until) => `🎉 Instant Listing Bonus is live! +${amount}UP every time you list an item (until ${until})`,
+    campaignBannerListingCountBonus: (until) => `🎉 Listing Count Bonus is live! Bonus UP based on how many items you list (until ${until})`,
+    campaignBannerBidderBonus: (rate, until) => `🎉 Bidder Cashback is live! Get ${rate}% of what you pay back as UP when you win (until ${until})`,
     campaignTypeSellerBonus: 'Seller Bonus (sale price × multiplier)',
     campaignTypeListingBonus: 'Instant Listing Bonus (flat)',
     campaignTypeListingCountBonus: 'Listing Count Bonus (tiered)',
@@ -606,11 +606,11 @@ function fmtCampaignDate(ts) {
 
 function campaignSummaryText(c) {
   const until = fmtCampaignDate(c.endsAt);
-  if (c.type === 'sellerBonus') return s().campaignBannerSellerBonus(c.label, c.multiplier, until);
-  if (c.type === 'listingBonus') return s().campaignBannerListingBonus(c.label, c.bonusAmount, until);
-  if (c.type === 'listingCountBonus') return s().campaignBannerListingCountBonus(c.label, until);
-  if (c.type === 'bidderBonus') return s().campaignBannerBidderBonus(c.label, c.rate, until);
-  return c.label || '';
+  if (c.type === 'sellerBonus') return s().campaignBannerSellerBonus(c.multiplier, until);
+  if (c.type === 'listingBonus') return s().campaignBannerListingBonus(c.bonusAmount, until);
+  if (c.type === 'listingCountBonus') return s().campaignBannerListingCountBonus(until);
+  if (c.type === 'bidderBonus') return s().campaignBannerBidderBonus(c.rate, until);
+  return '';
 }
 
 // ===== キャンペーン詳細ポップ(バナー右上の「？」から開く、2026-09-20追加) =====
@@ -635,7 +635,7 @@ function openCampaignDetailModal(c) {
   const title = document.getElementById('campaign-detail-title');
   const body = document.getElementById('campaign-detail-body');
   if (!modal || !title || !body) return;
-  title.textContent = c.label || '';
+  title.textContent = campaignTypeLabel(c);
   const period = s().campaignDetailPeriodValue(fmtCampaignDate(c.startsAt), fmtCampaignDate(c.endsAt));
   body.innerHTML = `
     <div class="campaign-detail-row"><span class="campaign-detail-label">${escapeHtmlLite(s().campaignDetailTypeLabel)}</span><span>${escapeHtmlLite(campaignTypeLabel(c))}</span></div>
@@ -658,9 +658,8 @@ function escapeHtmlLite(str) {
   }[ch]));
 }
 
-// 種類ごとの既定バナー(99_SharedImage、2026-09-20追加)。キャンペーン作成時にURLを
-// 入力しなくても、typeから自動で対応する画像を出す。campaign.bannerImageUrlを
-// 個別に設定すればそちらが優先される(既定を上書きしたい場合の個別指定用)。
+// 種類ごとの既定バナー(99_SharedImage、2026-09-20追加)。typeから自動で対応する画像を
+// 出す(バナーURLの個別指定は「変えることがないから」2026-09-20に廃止、種類ごとに固定)。
 // 24_AccountCenter/admin/admin.jsのプレビュー表示にも同じ内容を持たせているので、
 // 画像を差し替えたらそちらも合わせること。
 const CAMPAIGN_TYPE_BANNER_URLS = {
@@ -679,7 +678,7 @@ function renderCampaignBanner() {
   el.innerHTML = '';
   el.hidden = active.length === 0;
   active.forEach((c) => {
-    const bannerUrl = c.bannerImageUrl || CAMPAIGN_TYPE_BANNER_URLS[c.type];
+    const bannerUrl = CAMPAIGN_TYPE_BANNER_URLS[c.type];
     if (bannerUrl) {
       const wrap = document.createElement('div');
       wrap.className = 'campaign-banner-item';
@@ -687,7 +686,7 @@ function renderCampaignBanner() {
       const img = document.createElement('img');
       img.className = 'campaign-banner-img';
       img.src = bannerUrl;
-      img.alt = c.label || '';
+      img.alt = campaignTypeLabel(c);
       wrap.appendChild(img);
 
       // バナー右上の「？」: 押すとそのキャンペーンの種類・内容・期間を詳細ポップで見せる。
