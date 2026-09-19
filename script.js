@@ -98,6 +98,7 @@ const i18n = {
     badgeOutbid: '更新あり',
     badgeOwned: '所持済',
     badgeNotOwned: '未所持',
+    badgeCampaign: 'キャンペーン対象',
     statusWinning: '入札中（最高額）',
     statusOutbid: '更新されました（他の人が上回っています）',
     statusWon: '落札しました！',
@@ -158,6 +159,7 @@ const i18n = {
     badgeOutbid: 'Outbid',
     badgeOwned: 'Owned',
     badgeNotOwned: 'Not owned',
+    badgeCampaign: 'Campaign Bonus',
     statusWinning: 'Winning (highest bid)',
     statusOutbid: "Outbid (someone else's bid is higher)",
     statusWon: 'You won it!',
@@ -297,6 +299,15 @@ function activeBidderBonusRate() {
 }
 function bidderBonusPoints(price) {
   return Math.round(price * activeBidderBonusRate() / 100);
+}
+
+// 「落札時ボーナス」系(sellerBonus/bidderBonus)のキャンペーンが今どれか1つでも
+// 有効かどうか。判定が落札確定の瞬間に効くようになった(このファイル冒頭の
+// settleListingコメント参照)ため、これは特定の出品だけの性質ではなく「今このタイミングで
+// 落札すれば(誰の出品でも)対象になるかどうか」という全出品共通の状態。出品カード/
+// タイルのバッジは、キャンペーン期間中は全件に一律で出ることになる(意図通り)。
+function hasActiveSettlementCampaign() {
+  return activeCampaignsOfType('sellerBonus').length > 0 || activeCampaignsOfType('bidderBonus').length > 0;
 }
 
 // ===== 期限切れオークションの精算（誰かが一覧を開いた時に遅延実行する） =====
@@ -844,6 +855,16 @@ function buildListCard(listing, myUserId, isExpired) {
     info.appendChild(ownedEl);
   }
 
+  // キャンペーン対象バッジ。所持済/未所持のすぐ下(別行)に出したいので、
+  // display:blockにしてある(他のバッジは横並びのinline-block)。落札確定時に効く
+  // キャンペーンなので、期間中は出品を問わず一律で全カードに出る(意図通り)。
+  if (hasActiveSettlementCampaign()) {
+    const campaignEl = document.createElement('span');
+    campaignEl.className = 'auction-card-campaign';
+    campaignEl.textContent = s().badgeCampaign;
+    info.appendChild(campaignEl);
+  }
+
   if (myBidListingIds.includes(listing.id)) {
     // 個別購読がまだ来ていない間は一覧側(latestListings)のデータで代用する
     const trackedData = myBidListingsData.get(listing.id) || listing;
@@ -923,6 +944,15 @@ function buildGridTile(listing, myUserId, isExpired) {
     ownedBadge.className = `auction-tile-owned auction-tile-owned-${owned ? 'yes' : 'no'}`;
     ownedBadge.textContent = owned ? s().badgeOwned : s().badgeNotOwned;
     imgWrap.appendChild(ownedBadge);
+  }
+
+  // キャンペーン対象バッジ。所持済/未所持バッジのすぐ下に重ねる。落札確定時に効く
+  // キャンペーンなので、期間中は出品を問わず一律で全タイルに出る(意図通り)。
+  if (hasActiveSettlementCampaign()) {
+    const campaignBadge = document.createElement('span');
+    campaignBadge.className = 'auction-tile-campaign';
+    campaignBadge.textContent = s().badgeCampaign;
+    imgWrap.appendChild(campaignBadge);
   }
 
   const isMine = listing.sellerId === myUserId;

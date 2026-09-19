@@ -191,6 +191,21 @@ main {
 .auction-tile-owned-yes { background: rgba(46, 160, 90, 0.92); }
 .auction-tile-owned-no { background: rgba(0, 0, 0, 0.55); }
 
+/* キャンペーン対象バッジ。所持済/未所持バッジ(top:4px)のすぐ下に重ねる */
+.auction-tile-campaign {
+  position: absolute;
+  top: 22px;
+  left: 4px;
+  font-size: 0.56rem;
+  font-weight: bold;
+  color: #4a2c00;
+  background: rgba(255, 204, 0, 0.92);
+  padding: 2px 6px;
+  border-radius: 999px;
+  line-height: 1.3;
+  white-space: nowrap;
+}
+
 .auction-tile-mine-badge {
   position: absolute;
   bottom: 0;
@@ -299,6 +314,20 @@ main {
 .auction-card-owned-no {
   color: #666;
   background: rgba(0, 0, 0, 0.06);
+}
+
+/* キャンペーン対象バッジ。所持済/未所持バッジの真下に来るようdisplay:blockにしてある
+   (他のバッジは横並びのinline-block)。 */
+.auction-card-campaign {
+  display: block;
+  font-size: 0.66rem;
+  font-weight: bold;
+  color: var(--gold);
+  background: rgba(255, 204, 0, 0.16);
+  border-radius: 999px;
+  padding: 2px 8px;
+  margin-bottom: 4px;
+  width: fit-content;
 }
 
 .auction-card-name {
