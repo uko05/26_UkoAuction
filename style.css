@@ -600,3 +600,12 @@ main {
   font-weight: bold;
 }
 
+/* キャンペーンバナー画像。サイズ・配置は運用しながら調整する前提の暫定値 */
+.campaign-banner-img {
+  display: block;
+  width: 100%;
+  max-height: 160px;
+  object-fit: cover;
+  border-radius: 8px;
+}
+

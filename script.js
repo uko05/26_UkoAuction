@@ -6,7 +6,7 @@
 // 自演両替の抜け道になっていた)。
 import { app, db } from './firebaseConfig.js';
 import {
-  collection, doc, onSnapshot, runTransaction,
+  collection, doc, getDoc, onSnapshot, runTransaction,
   query, where, orderBy, limit, increment, serverTimestamp, arrayUnion,
 } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
 
@@ -215,7 +215,21 @@ function showToast(text, isError) {
 // enabledは緊急停止用(期間内でもfalseなら無効)。複数のキャンペーンを同時開催できる
 // (同じtypeが複数アクティブな場合、sellerBonus/bidderBonusは最大値を採用、
 // listingBonus/listingCountBonusは合算する。それぞれの関数のコメント参照)。
+// adminOnly(2026-09-20追加): テスト中のキャンペーンを一般ユーザーに見せず・適用もしない
+// ためのフラグ。うこ氏サイト群共通ロール(sharedUserRoles、匿名ID直接キー、FriendBoard/
+// 24_AccountCenterと同じ仕組み)がadminの人にだけ、バナー表示・ボーナス適用の両方が効く。
 let latestCampaigns = [];
+let isAdminRole = false;
+
+async function loadMyRole() {
+  try {
+    const snap = await getDoc(doc(db, 'sharedUserRoles', getUserId()));
+    isAdminRole = snap.exists() && snap.data().role === 'admin';
+  } catch (e) {
+    console.error('[auction] role load failed', e);
+  }
+  renderCampaignBanner();
+}
 
 function initCampaigns() {
   onSnapshot(collection(db, 'ukoAuctionCampaigns'), (snap) => {
@@ -226,6 +240,7 @@ function initCampaigns() {
 
 function isCampaignActive(c) {
   if (!c.enabled) return false;
+  if (c.adminOnly && !isAdminRole) return false;
   const now = Date.now();
   return c.startsAt?.toMillis() <= now && now <= c.endsAt?.toMillis();
 }
@@ -581,6 +596,13 @@ function renderCampaignBanner() {
   el.innerHTML = '';
   el.hidden = active.length === 0;
   active.forEach((c) => {
+    if (c.bannerImageUrl) {
+      const img = document.createElement('img');
+      img.className = 'campaign-banner-img';
+      img.src = c.bannerImageUrl;
+      img.alt = c.label || '';
+      el.appendChild(img);
+    }
     const row = document.createElement('div');
     row.textContent = campaignSummaryText(c);
     el.appendChild(row);
@@ -919,6 +941,7 @@ function initAuctionList() {
   if (myBidsBackdrop) myBidsBackdrop.addEventListener('click', closeMyBidsModal);
 
   initMyBidsTracking();
+  loadMyRole();
   initCampaigns();
   initSortSelect();
   initViewToggle();
