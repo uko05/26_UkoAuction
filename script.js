@@ -9,6 +9,15 @@ import {
   collection, doc, onSnapshot, runTransaction,
   query, where, orderBy, limit, increment, serverTimestamp, arrayUnion,
 } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
+
+// UP取得履歴(管理者画面「UP取得履歴」用の監査ログ、2026-09-19追加)。ukoPointsを
+// 増やす箇所でこのコレクションにも1件書き込んでおくと、後から「誰が・何で・いつ・
+// いくら」UPを得たか追跡できる(即決の自演発覚のような不正調査に使う想定)。書き込みだけ、
+// 読み取りは24_AccountCenter/admin側で行う。トランザクション内ではaddDoc()が使えない
+// ため、事前にdoc(collection(db,'ukoPointsLog'))でrefを作りtx.set()する。
+function ukoPointsLogEntry(userId, amount, type, meta = {}) {
+  return { userId, amount, type, meta, createdAt: serverTimestamp() };
+}
 import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
 
 // ===== ログイン状態(入札をアカウント登録者限定にするため。
@@ -267,7 +276,12 @@ async function settleListing(listingId) {
             [d.returnField]: increment(1),
             [`missionsAchieved.${AUCTION_WIN_MISSION_CLAIM_KEY}`]: true,
           };
-          if (cashback > 0) winnerUpdates.ukoPoints = increment(cashback);
+          if (cashback > 0) {
+            winnerUpdates.ukoPoints = increment(cashback);
+            tx.set(doc(collection(db, 'ukoPointsLog')), ukoPointsLogEntry(
+              d.currentBidderId, cashback, 'auctionCashback', { listingId, itemName: d.itemName }
+            ));
+          }
           tx.update(winnerRef, winnerUpdates);
         }
         if (sellerSnap.exists()) {
@@ -275,6 +289,9 @@ async function settleListing(listingId) {
           // (Firestoreの整数運用に合わせ四捨五入)。
           const bonusPoints = Math.round(d.currentBid * activeSellerBonusMultiplier());
           tx.update(sellerRef, { ukoPoints: increment(bonusPoints) });
+          tx.set(doc(collection(db, 'ukoPointsLog')), ukoPointsLogEntry(
+            d.sellerId, bonusPoints, 'auctionSale', { listingId, itemName: d.itemName, soldPrice: d.currentBid }
+          ));
         }
         tx.update(ref, { status: 'sold', soldVia: 'bid', soldPrice: d.currentBid, soldTo: d.currentBidderId, soldAt: serverTimestamp() });
       } else {
