@@ -282,23 +282,23 @@ function activeCampaignsOfType(type) {
 }
 
 // 同時に複数のsellerBonusキャンペーンが有効な場合、乗算で重ねると際限なく増えて
-// しまうため、最大倍率のものだけを採用する(1つも無ければ通常通り1倍)。
-function activeSellerBonusMultiplier() {
+// しまうため、最大倍率のものだけを採用する(1つも無ければnull)。UP取得履歴に
+// campaignId(2026-09-20追加、キャンペーンごとの集計メール送信で「どのキャンペーンで
+// 稼いだか」を追うために使う)を残す都合上、倍率の数値だけでなく採用した
+// キャンペーンのドキュメント自体を返す。
+function bestActiveSellerBonusCampaign() {
   const active = activeCampaignsOfType('sellerBonus');
-  if (!active.length) return 1;
-  return Math.max(1, ...active.map((c) => c.multiplier || 1));
+  if (!active.length) return null;
+  return active.reduce((best, c) => ((c.multiplier || 1) > (best.multiplier || 1) ? c : best));
 }
 
 // 落札者(買う側)向けのキャッシュバック。落札額はそのまま支払った上で、
 // 落札額のrate%が別途UPで還元される。sellerBonusと同じ理由で、複数有効な場合も
-// 合算せず最大rateのものだけを採用する(1つも無ければ0%)。
-function activeBidderBonusRate() {
+// 合算せず最大rateのものだけを採用する(1つも無ければnull)。
+function bestActiveBidderBonusCampaign() {
   const active = activeCampaignsOfType('bidderBonus');
-  if (!active.length) return 0;
-  return Math.max(0, ...active.map((c) => c.rate || 0));
-}
-function bidderBonusPoints(price) {
-  return Math.round(price * activeBidderBonusRate() / 100);
+  if (!active.length) return null;
+  return active.reduce((best, c) => ((c.rate || 0) > (best.rate || 0) ? c : best));
 }
 
 // 「落札時ボーナス」系(sellerBonus/bidderBonus)のキャンペーンが今どれか1つでも
@@ -334,27 +334,44 @@ async function settleListing(listingId) {
         if (winnerSnap.exists()) {
           // bidderBonusキャンペーンが落札確定した今この瞬間に有効なら、支払額は
           // そのままに一部をUPで還元する。
-          const cashback = bidderBonusPoints(d.currentBid);
+          const bidderCampaign = bestActiveBidderBonusCampaign();
+          const cashback = bidderCampaign ? Math.round(d.currentBid * (bidderCampaign.rate || 0) / 100) : 0;
           const winnerUpdates = {
             [d.returnField]: increment(1),
             [`missionsAchieved.${AUCTION_WIN_MISSION_CLAIM_KEY}`]: true,
           };
           if (cashback > 0) {
             winnerUpdates.ukoPoints = increment(cashback);
+            // campaignId/campaignType(2026-09-20追加): 24_AccountCenter/adminの
+            // キャンペーンごとの集計メール送信が「どのキャンペーンで稼いだか」を
+            // 後から追えるようにするため、meta に残しておく。
             tx.set(doc(collection(db, 'ukoPointsLog')), ukoPointsLogEntry(
-              d.currentBidderId, cashback, 'auctionCashback', { listingId, itemName: d.itemName }
+              d.currentBidderId, cashback, 'auctionCashback',
+              { listingId, itemName: d.itemName, campaignId: bidderCampaign.id, campaignType: 'bidderBonus' }
             ));
           }
           tx.update(winnerRef, winnerUpdates);
         }
         if (sellerSnap.exists()) {
           // sellerBonusキャンペーンが落札確定した今この瞬間に有効なら、落札額そのままでは
-          // なく倍率を掛けて渡す(Firestoreの整数運用に合わせ四捨五入)。
-          const bonusPoints = Math.round(d.currentBid * activeSellerBonusMultiplier());
+          // なく倍率を掛けて渡す(Firestoreの整数運用に合わせ四捨五入)。ボーナス分だけを
+          // campaignId付きの別ログ(auctionSaleBonus)に分けて記録する(通常の売上ログ
+          // auctionSaleと合算しないことで、キャンペーンごとの集計メールが正確なボーナス額
+          // だけを拾えるようにするため、2026-09-20追加)。
+          const sellerCampaign = bestActiveSellerBonusCampaign();
+          const multiplier = sellerCampaign ? Math.max(1, sellerCampaign.multiplier || 1) : 1;
+          const bonusPoints = Math.round(d.currentBid * multiplier);
           tx.update(sellerRef, { ukoPoints: increment(bonusPoints) });
           tx.set(doc(collection(db, 'ukoPointsLog')), ukoPointsLogEntry(
-            d.sellerId, bonusPoints, 'auctionSale', { listingId, itemName: d.itemName, soldPrice: d.currentBid }
+            d.sellerId, d.currentBid, 'auctionSale', { listingId, itemName: d.itemName, soldPrice: d.currentBid }
           ));
+          const sellerBonusDelta = bonusPoints - d.currentBid;
+          if (sellerBonusDelta > 0 && sellerCampaign) {
+            tx.set(doc(collection(db, 'ukoPointsLog')), ukoPointsLogEntry(
+              d.sellerId, sellerBonusDelta, 'auctionSaleBonus',
+              { listingId, itemName: d.itemName, campaignId: sellerCampaign.id, campaignType: 'sellerBonus' }
+            ));
+          }
         }
         tx.update(ref, { status: 'sold', soldVia: 'bid', soldPrice: d.currentBid, soldTo: d.currentBidderId, soldAt: serverTimestamp() });
       } else {
