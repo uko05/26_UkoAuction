@@ -659,6 +659,13 @@ main {
 }
 .campaign-banner-info-btn:hover { background: rgba(0, 0, 0, 0.75); }
 
+/* ボーナスUPは終了後メール経由という案内(2026-09-20追加) */
+.campaign-banner-note {
+  font-size: 0.72rem;
+  font-weight: normal;
+  color: var(--muted);
+}
+
 .campaign-detail-row {
   display: flex;
   justify-content: space-between;
@@ -669,6 +676,11 @@ main {
 }
 .campaign-detail-row:last-child { border-bottom: none; }
 .campaign-detail-label { color: var(--muted); flex-shrink: 0; }
+.campaign-detail-note {
+  margin-top: 8px;
+  font-size: 0.76rem;
+  color: var(--muted);
+}
 
 /* 出品一覧のページ送り(2026-09-20追加、50件/ページ) */
 .auction-pager {

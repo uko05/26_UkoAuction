@@ -116,11 +116,12 @@ const i18n = {
     pagerPrevBtn: '前のページ',
     pagerNextBtn: '次のページ',
     campaignBannerSellerBonus: (mult, until) => `🎉 出品者ボーナス開催中！出品が落札されると通常の${mult}倍のUPがもらえます（${until}まで）`,
-    campaignBannerListingBonus: (amount, until) => `🎉 出品即時ボーナス開催中！出品するたび+${amount}UP（${until}まで）`,
+    campaignBannerListingBonus: (amount, until) => `🎉 出品ボーナス開催中！出品するたび+${amount}UP（${until}まで）`,
     campaignBannerListingCountBonus: (until) => `🎉 出品数ボーナス開催中！出品数に応じてボーナスUPがもらえます（${until}まで）`,
     campaignBannerBidderBonus: (rate, until) => `🎉 落札者キャッシュバック開催中！落札すると支払額の${rate}%がUPで還元されます（${until}まで）`,
+    campaignBannerDeferredNote: '※ボーナスUPはキャンペーン終了後、メールでまとめてお届けします（受け取る操作で加算されます）',
     campaignTypeSellerBonus: '出品者ボーナス（落札額×倍率）',
-    campaignTypeListingBonus: '出品即時ボーナス（定額）',
+    campaignTypeListingBonus: '出品ボーナス（定額）',
     campaignTypeListingCountBonus: '出品数ボーナス（段階制）',
     campaignTypeBidderBonus: '落札者キャッシュバック（落札額の%還元）',
     campaignDetailTypeLabel: '種類',
@@ -131,6 +132,7 @@ const i18n = {
     campaignDetailTiers: (tiers) => tiers.map((t) => `${t.count}件で+${t.bonus}UP`).join(' / '),
     campaignDetailRate: (rate) => `支払額の${rate}%を還元`,
     campaignDetailPeriodValue: (from, to) => `${from} 〜 ${to}`,
+    campaignDetailDeferredNote: 'このボーナス分はキャンペーン終了後、メールでまとめて届きます。',
   },
   en: {
     pageTitle: 'Uko Auction',
@@ -177,11 +179,12 @@ const i18n = {
     pagerPrevBtn: 'Previous',
     pagerNextBtn: 'Next',
     campaignBannerSellerBonus: (mult, until) => `🎉 Seller Bonus is live! Sellers get ${mult}x UP when their listing sells (until ${until})`,
-    campaignBannerListingBonus: (amount, until) => `🎉 Instant Listing Bonus is live! +${amount}UP every time you list an item (until ${until})`,
+    campaignBannerListingBonus: (amount, until) => `🎉 Listing Bonus is live! +${amount}UP every time you list an item (until ${until})`,
     campaignBannerListingCountBonus: (until) => `🎉 Listing Count Bonus is live! Bonus UP based on how many items you list (until ${until})`,
     campaignBannerBidderBonus: (rate, until) => `🎉 Bidder Cashback is live! Get ${rate}% of what you pay back as UP when you win (until ${until})`,
+    campaignBannerDeferredNote: '※ Bonus UP is delivered by mail after the campaign ends (claim it there to receive it)',
     campaignTypeSellerBonus: 'Seller Bonus (sale price × multiplier)',
-    campaignTypeListingBonus: 'Instant Listing Bonus (flat)',
+    campaignTypeListingBonus: 'Listing Bonus (flat)',
     campaignTypeListingCountBonus: 'Listing Count Bonus (tiered)',
     campaignTypeBidderBonus: 'Bidder Cashback (% of sale price)',
     campaignDetailTypeLabel: 'Type',
@@ -192,6 +195,7 @@ const i18n = {
     campaignDetailTiers: (tiers) => tiers.map((t) => `${t.count} listings → +${t.bonus}UP`).join(' / '),
     campaignDetailRate: (rate) => `${rate}% of what you pay is refunded`,
     campaignDetailPeriodValue: (from, to) => `${from} – ${to}`,
+    campaignDetailDeferredNote: 'This bonus is delivered by mail after the campaign ends.',
   },
 };
 function currentLang() {
@@ -317,6 +321,12 @@ function hasActiveSettlementCampaign() {
 // 見ない。そのぶん、短い開催期間だと「出品した時は開催中だったのに落札時には終わって
 // 恩恵が付かない」ことが起こり得るが、それは名前通りの挙動として許容する
 // (キャンペーン期間を出品期間より長めに取るなど運用側で調整する)。
+// ボーナス分は即時付与しない(2026-09-20変更): 基本の売買代金(落札額そのまま/支払った
+// 満額)はこれまで通りここで即座に渡すが、キャンペーンによる上乗せ・還元分だけは
+// ukoPointsLogに記録するのみに留め、実際のukoPoints増加は24_AccountCenter/adminの
+// 「集計メール送信」でキャンペーン終了後にまとめて送るメール経由(受け取る操作で
+// 付与)に一本化した。理由: 出品/落札した瞬間に増額分だけ即もらえてしまうと、
+// 「キャンペーンのボーナスは終了後メールで」という他の3種と扱いがバラバラになるため。
 async function settleListing(listingId) {
   const ref = doc(db, 'ukoMarketListings', listingId);
   try {
@@ -332,8 +342,8 @@ async function settleListing(listingId) {
         const sellerRef = doc(db, 'omikujiUsers', d.sellerId);
         const [winnerSnap, sellerSnap] = await Promise.all([tx.get(winnerRef), tx.get(sellerRef)]);
         if (winnerSnap.exists()) {
-          // bidderBonusキャンペーンが落札確定した今この瞬間に有効なら、支払額は
-          // そのままに一部をUPで還元する。
+          // bidderBonusキャンペーンが落札確定した今この瞬間に有効なら、対象額を記録する
+          // (実際のukoPoints付与はキャンペーン終了後の集計メール経由、上のコメント参照)。
           const bidderCampaign = bestActiveBidderBonusCampaign();
           const cashback = bidderCampaign ? Math.round(d.currentBid * (bidderCampaign.rate || 0) / 100) : 0;
           const winnerUpdates = {
@@ -341,10 +351,10 @@ async function settleListing(listingId) {
             [`missionsAchieved.${AUCTION_WIN_MISSION_CLAIM_KEY}`]: true,
           };
           if (cashback > 0) {
-            winnerUpdates.ukoPoints = increment(cashback);
             // campaignId/campaignType(2026-09-20追加): 24_AccountCenter/adminの
             // キャンペーンごとの集計メール送信が「どのキャンペーンで稼いだか」を
-            // 後から追えるようにするため、meta に残しておく。
+            // 後から追え、かつそのメールが実際の付与手段になる。ここではukoPointsは
+            // 増やさない。
             tx.set(doc(collection(db, 'ukoPointsLog')), ukoPointsLogEntry(
               d.currentBidderId, cashback, 'auctionCashback',
               { listingId, itemName: d.itemName, campaignId: bidderCampaign.id, campaignType: 'bidderBonus' }
@@ -353,15 +363,16 @@ async function settleListing(listingId) {
           tx.update(winnerRef, winnerUpdates);
         }
         if (sellerSnap.exists()) {
-          // sellerBonusキャンペーンが落札確定した今この瞬間に有効なら、落札額そのままでは
-          // なく倍率を掛けて渡す(Firestoreの整数運用に合わせ四捨五入)。ボーナス分だけを
+          // 基本の落札代金(落札額そのまま)はこれまで通りここで即座に渡す。sellerBonus
+          // キャンペーンによる上乗せ分(倍率−1倍ぶん)は記録だけして即時には渡さない
+          // (キャンペーン終了後の集計メール経由、上のコメント参照)。ボーナス分は
           // campaignId付きの別ログ(auctionSaleBonus)に分けて記録する(通常の売上ログ
           // auctionSaleと合算しないことで、キャンペーンごとの集計メールが正確なボーナス額
           // だけを拾えるようにするため、2026-09-20追加)。
           const sellerCampaign = bestActiveSellerBonusCampaign();
           const multiplier = sellerCampaign ? Math.max(1, sellerCampaign.multiplier || 1) : 1;
           const bonusPoints = Math.round(d.currentBid * multiplier);
-          tx.update(sellerRef, { ukoPoints: increment(bonusPoints) });
+          tx.update(sellerRef, { ukoPoints: increment(d.currentBid) });
           tx.set(doc(collection(db, 'ukoPointsLog')), ukoPointsLogEntry(
             d.sellerId, d.currentBid, 'auctionSale', { listingId, itemName: d.itemName, soldPrice: d.currentBid }
           ));
@@ -682,6 +693,7 @@ function openCampaignDetailModal(c) {
     <div class="campaign-detail-row"><span class="campaign-detail-label">${escapeHtmlLite(s().campaignDetailTypeLabel)}</span><span>${escapeHtmlLite(campaignTypeLabel(c))}</span></div>
     <div class="campaign-detail-row"><span class="campaign-detail-label">${escapeHtmlLite(s().campaignDetailContentLabel)}</span><span>${escapeHtmlLite(campaignDetailValueText(c))}</span></div>
     <div class="campaign-detail-row"><span class="campaign-detail-label">${escapeHtmlLite(s().campaignDetailPeriodLabel)}</span><span>${escapeHtmlLite(period)}</span></div>
+    <div class="campaign-detail-note">${escapeHtmlLite(s().campaignDetailDeferredNote)}</div>
   `;
   modal.style.display = 'flex';
 }
@@ -745,6 +757,14 @@ function renderCampaignBanner() {
     row.textContent = campaignSummaryText(c);
     el.appendChild(row);
   });
+  // ボーナスUP自体は即時付与ではなくキャンペーン終了後の集計メール経由(2026-09-20変更)
+  // なので、そのことを一度だけ案内しておく(バナーごとに繰り返さない)。
+  if (active.length > 0) {
+    const note = document.createElement('div');
+    note.className = 'campaign-banner-note';
+    note.textContent = s().campaignBannerDeferredNote;
+    el.appendChild(note);
+  }
 }
 
 // ===== 一覧描画 =====
