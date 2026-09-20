@@ -75,6 +75,8 @@ const i18n = {
     pageTitle: 'うーこオークション',
     headerSub: 'うーこの部屋の各サイトで出品されたアイテムを一覧・入札できます',
     empty: '出品されているアイテムはありません',
+    emptySearch: '該当するアイテムが見つかりませんでした',
+    searchPlaceholder: 'アイテム名で検索',
     startLabel: '開始',
     currentLabel: '現在',
     noBid: 'まだ入札なし',
@@ -137,6 +139,8 @@ const i18n = {
     pageTitle: 'Uko Auction',
     headerSub: 'Browse and bid on items listed across うーこの部屋 sites',
     empty: 'No items are currently listed',
+    emptySearch: 'No items matched your search',
+    searchPlaceholder: 'Search by item name',
     startLabel: 'Start',
     currentLabel: 'Current',
     noBid: 'No bids yet',
@@ -206,6 +210,10 @@ function applyLang(lang) {
   document.querySelectorAll('[data-i18n]').forEach((el) => {
     const val = s()[el.dataset.i18n];
     if (typeof val === 'string') el.textContent = val;
+  });
+  document.querySelectorAll('[data-i18n-placeholder]').forEach((el) => {
+    const val = s()[el.dataset.i18nPlaceholder];
+    if (typeof val === 'string') el.placeholder = val;
   });
   localStorage.setItem('lang', lang);
   renderAuctionList(latestListings);
@@ -778,6 +786,34 @@ function fmtTimeLeft(endsAt) {
 let latestListings = [];
 let deepLinkHandled = false;
 
+// ===== 検索(2026-09-21追加、アイテム名の部分一致) =====
+// 表示中のページだけでなく、latestListings(取得済みの全アクティブ出品)全体に
+// 対してフィルタする。ページングはフィルタ後の件数で再計算されるので、
+// 検索すると自動的に1ページ目から見せる(input側でauctionCurrentPageをリセットする)。
+let auctionSearchQuery = '';
+function filterListings(listings) {
+  if (!auctionSearchQuery) return listings;
+  const q = auctionSearchQuery.toLowerCase();
+  return listings.filter((l) => (l.itemName || '').toLowerCase().includes(q));
+}
+function initSearchInput() {
+  const input = document.getElementById('auction-search-input');
+  if (!input) return;
+  input.addEventListener('input', () => {
+    auctionSearchQuery = input.value.trim();
+    auctionCurrentPage = 1;
+    renderAuctionList(latestListings);
+    updateListingCount();
+  });
+}
+
+// ページ送り後、ページ最上部(window.scrollTo(top:0))ではなくauction-listの
+// 位置まで戻す(2026-09-21変更。キャンペーンバナーが複数あると最上部からだと
+// 出品一覧まで毎回スクロールし直す必要があって面倒、という指摘から)。
+function scrollToAuctionList() {
+  document.getElementById('auction-list')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
 // ===== ページ送り(2026-09-20追加、同日中にクエリのlimit自体を完全撤廃) =====
 // 最初はFirestoreクエリのlimitが100件で、101件目以降がそもそも一覧に出てこなかった。
 // 一度500件まで引き上げたが、キャンペーンで出品数が急増しそれも超えそうになったため、
@@ -1042,7 +1078,16 @@ function renderAuctionList(rawListings) {
   const pagerEl = document.getElementById('auction-pager');
   if (!listEl) return;
   const myUserId = getUserId();
-  const listings = sortListings(rawListings);
+
+  // 期限切れの精算トリガーは検索条件に関係なく全件(rawListings)に対して行う。
+  // 表示側は後で検索・ページ単位に絞るので、検索でたまたま絞り込まれて
+  // 画面に出ていない期限切れ出品も誰かがサイトを開いた時点でちゃんと精算される。
+  rawListings.forEach((listing) => {
+    const isExpired = listing.endsAt && listing.endsAt.toMillis() <= Date.now();
+    if (isExpired) settleListing(listing.id);
+  });
+
+  const listings = sortListings(filterListings(rawListings));
   const mode = getViewMode();
   listEl.className = mode === 'grid' ? 'auction-list-grid' : 'auction-list';
   listEl.innerHTML = '';
@@ -1051,18 +1096,10 @@ function renderAuctionList(rawListings) {
   if (listings.length === 0) {
     const p = document.createElement('p');
     p.className = 'auction-empty';
-    p.textContent = s().empty;
+    p.textContent = auctionSearchQuery ? s().emptySearch : s().empty;
     listEl.appendChild(p);
     return;
   }
-
-  // 期限切れの精算トリガーはページ全体(全件)に対して行う。表示だけ後で
-  // ページ単位に絞るので、2ページ目以降にある期限切れ出品も誰かがサイトを
-  // 開いた時点でちゃんと精算される。
-  listings.forEach((listing) => {
-    const isExpired = listing.endsAt && listing.endsAt.toMillis() <= Date.now();
-    if (isExpired) settleListing(listing.id);
-  });
 
   const totalPages = Math.max(1, Math.ceil(listings.length / AUCTION_PAGE_SIZE));
   auctionCurrentPage = Math.min(Math.max(1, auctionCurrentPage), totalPages);
@@ -1087,7 +1124,7 @@ function renderAuctionList(rawListings) {
       auctionCurrentPage -= 1;
       renderAuctionList(latestListings);
       updateListingCount();
-      window.scrollTo({ top: 0, behavior: 'smooth' });
+      scrollToAuctionList();
     });
 
     const label = document.createElement('span');
@@ -1103,7 +1140,7 @@ function renderAuctionList(rawListings) {
       auctionCurrentPage += 1;
       renderAuctionList(latestListings);
       updateListingCount();
-      window.scrollTo({ top: 0, behavior: 'smooth' });
+      scrollToAuctionList();
     });
 
     pagerEl.appendChild(prevBtn);
@@ -1135,7 +1172,7 @@ function renderAuctionList(rawListings) {
 function updateListingCount() {
   const el = document.getElementById('auction-listing-count');
   if (!el) return;
-  const count = latestListings.length;
+  const count = filterListings(latestListings).length;
   const base = s().listingCount(count);
   const totalPages = Math.max(1, Math.ceil(count / AUCTION_PAGE_SIZE));
   el.textContent = totalPages > 1 ? base + s().listingCountPageSuffix(auctionCurrentPage, totalPages) : base;
@@ -1190,6 +1227,7 @@ function initAuctionList() {
   initCampaigns();
   initSortSelect();
   initViewToggle();
+  initSearchInput();
 }
 
 initLangSwitch();

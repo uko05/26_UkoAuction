@@ -6,7 +6,7 @@
     <meta name="description" content="うーこの部屋の各サイトで出品されたアイテムを横断的に一覧・入札できるオークションサイトです。">
 
     <title>うーこオークション - うーこの部屋</title>
-    <link rel="stylesheet" href="style.css?v=11">
+    <link rel="stylesheet" href="style.css?v=12">
 
     <!-- Favicon -->
     <link rel="icon" href="https://cdn.jsdelivr.net/gh/uko05/99_SharedImage@main/00_common/favicon_io/favicon.ico" type="image/x-icon">
@@ -30,6 +30,9 @@
 
     <main>
         <div id="campaign-banner" class="campaign-banner" hidden></div>
+        <div class="auction-search-row">
+          <input type="search" id="auction-search-input" class="auction-search-input" data-i18n-placeholder="searchPlaceholder" placeholder="アイテム名で検索">
+        </div>
         <div class="auction-sort-row">
           <span id="auction-listing-count" class="auction-listing-count"></span>
           <span class="auction-sort-row-right">
@@ -112,7 +115,7 @@
         <span id="uko-account-status-slot"></span>
     </footer>
 
-    <span id="site-version" class="site-version">v1.15</span>
+    <span id="site-version" class="site-version">v1.16</span>
 
     <script type="module" src="script.js"></script>
     <script src="https://uko05.github.io/TopPage00/shared/sidebar.js"></script>

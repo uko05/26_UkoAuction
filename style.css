@@ -86,6 +86,22 @@ main {
 }
 
 /* ===== 並べ替え ===== */
+.auction-search-row {
+  margin-bottom: 10px;
+}
+
+.auction-search-input {
+  width: 100%;
+  font-family: var(--font);
+  font-size: 0.85rem;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 8px 14px;
+  box-sizing: border-box;
+}
+
 .auction-sort-row {
   display: flex;
   align-items: center;
