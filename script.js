@@ -7,7 +7,7 @@
 import { app, db } from './firebaseConfig.js';
 import {
   collection, doc, getDoc, onSnapshot, runTransaction,
-  query, where, orderBy, limit, increment, serverTimestamp, arrayUnion,
+  query, where, orderBy, increment, serverTimestamp, arrayUnion,
 } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
 
 // UP取得履歴(管理者画面「UP取得履歴」用の監査ログ、2026-09-19追加)。ukoPointsを
@@ -111,7 +111,6 @@ const i18n = {
     sortPriceHigh: '価格が高い順',
     sortBidCount: '入札件数が多い順',
     listingCount: (n) => `${n}件出品中`,
-    listingCountMax: (n) => `${n}件以上出品中`,
     listingCountPageSuffix: (page, totalPages) => `（${page}/${totalPages}ページ）`,
     pagerPrevBtn: '前のページ',
     pagerNextBtn: '次のページ',
@@ -174,7 +173,6 @@ const i18n = {
     sortPriceHigh: 'Price: high to low',
     sortBidCount: 'Most bids',
     listingCount: (n) => `${n} item${n === 1 ? '' : 's'} listed`,
-    listingCountMax: (n) => `${n}+ items listed`,
     listingCountPageSuffix: (page, totalPages) => ` (page ${page}/${totalPages})`,
     pagerPrevBtn: 'Previous',
     pagerNextBtn: 'Next',
@@ -780,11 +778,12 @@ function fmtTimeLeft(endsAt) {
 let latestListings = [];
 let deepLinkHandled = false;
 
-// ===== ページ送り(2026-09-20追加) =====
-// 以前はFirestoreクエリのlimit自体が100件で、101件目以降がそもそも一覧に出てこなかった
-// (「100件以上出品中」の表示はここで頭打ちになっていることの目印だった)。クエリの
-// limitを大きく引き上げ(AUCTION_LIST_QUERY_LIMIT)、代わりに表示側でAUCTION_PAGE_SIZE
-// 件ずつのページ送りにすることで、実在する出品を漏れなくたどれるようにした。
+// ===== ページ送り(2026-09-20追加、同日中にクエリのlimit自体を完全撤廃) =====
+// 最初はFirestoreクエリのlimitが100件で、101件目以降がそもそも一覧に出てこなかった。
+// 一度500件まで引き上げたが、キャンペーンで出品数が急増しそれも超えそうになったため、
+// クエリのlimitを完全に撤廃した(initAuctionList参照。アクティブな出品を1件も漏らさず
+// 取得する)。表示側はAUCTION_PAGE_SIZE件ずつのページ送りのままなので、件数がどれだけ
+// 増えても描画自体は軽いまま全件たどれる。
 const AUCTION_PAGE_SIZE = 50;
 let auctionCurrentPage = 1;
 
@@ -1129,27 +1128,28 @@ function renderAuctionList(rawListings) {
 }
 
 // ===== 出品件数表示 =====
-// 一覧クエリのlimit件数と同じ値を上限として持っておき、万一これに達するほど出品が
-// 積み上がった場合は「ちょうどこの件数」ではなく「以上」であることが伝わる表示にする
-// (通常の運用では実質無制限とみなせる件数にしてある)。表示自体はAUCTION_PAGE_SIZE件
-// ずつのページ送りなので、この件数分すべてたどって見られる。
-const AUCTION_LIST_QUERY_LIMIT = 500;
+// クエリ自体にlimitを付けなくなった(2026-09-20、キャンペーンで出品数が急増し500件の
+// 上限に達しそうだったため完全無制限化)ので、常に実件数をそのまま表示する。
+// 表示自体はAUCTION_PAGE_SIZE件ずつのページ送りなので、件数がどれだけ増えても
+// すべてたどって見られる。
 function updateListingCount() {
   const el = document.getElementById('auction-listing-count');
   if (!el) return;
   const count = latestListings.length;
-  const base = count >= AUCTION_LIST_QUERY_LIMIT ? s().listingCountMax(count) : s().listingCount(count);
+  const base = s().listingCount(count);
   const totalPages = Math.max(1, Math.ceil(count / AUCTION_PAGE_SIZE));
   el.textContent = totalPages > 1 ? base + s().listingCountPageSuffix(auctionCurrentPage, totalPages) : base;
 }
 
 // ===== 初期化 =====
 function initAuctionList() {
+  // limit()を付けない(2026-09-20、上のコメント参照)。アクティブな出品を1件も
+  // 漏らさず取得する(件数が増えるほど読み込みコストは上がるが、ページ送り表示自体は
+  // AUCTION_PAGE_SIZE単位のままなので描画は変わらず軽い)。
   const q = query(
     collection(db, 'ukoMarketListings'),
     where('status', '==', 'active'),
-    orderBy('endsAt', 'asc'),
-    limit(AUCTION_LIST_QUERY_LIMIT)
+    orderBy('endsAt', 'asc')
   );
   onSnapshot(q, (snap) => {
     latestListings = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
