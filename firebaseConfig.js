@@ -1,6 +1,8 @@
 // firebaseConfig.js
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js";
-import { getFirestore } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
+import {
+  initializeFirestore, persistentLocalCache, persistentMultipleTabManager,
+} from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
 
 const firebaseConfig = {
   apiKey: "AIzaSyCP4QfMGDDBSI8VDERnESBOlHpUhy7wGPk",
@@ -12,4 +14,10 @@ const firebaseConfig = {
 };
 
 export const app = initializeApp(firebaseConfig);
-export const db = getFirestore(app);
+// 永続キャッシュ(IndexedDB、2026-09-27追加): visibleListener.jsで購読を止めて再開した時や
+// 30分以内のリロード時に、変わったドキュメントだけの読み取りで済ませるため。
+// 複数タブで開いても共有できるようmultipleTabManagerを使う。IndexedDBが使えない環境
+// (一部のプライベートブラウズ等)ではSDKが自動でメモリキャッシュにフォールバックする。
+export const db = initializeFirestore(app, {
+  localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }),
+});

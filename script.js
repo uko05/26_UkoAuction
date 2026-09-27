@@ -5,6 +5,7 @@
 // 大きく上回っていたため、メイン垢で安くガチャを回して複製をサブ垢に即決購入させる
 // 自演両替の抜け道になっていた)。
 import { app, db } from './firebaseConfig.js';
+import { listenWhileVisible, isListeningPaused } from './visibleListener.js';
 import {
   collection, doc, getDoc, onSnapshot, runTransaction,
   query, where, orderBy, increment, serverTimestamp, arrayUnion,
@@ -273,11 +274,25 @@ async function loadMyRole() {
   renderCampaignBanner();
 }
 
+// キャンペーン一覧をサーバーから受け取り済みか(2026-09-27追加)。精算時のボーナス判定に
+// 使うため、永続キャッシュの古い内容やタブ復帰直後の止めていた間の内容で精算しないよう、
+// サーバー由来のスナップショットを受け取るまでsettleExpiredListingsを待たせる。
+// キャッシュとサーバーの内容が同じだと通常はイベントが来ないので、includeMetadataChanges
+// でfromCacheの切り替わりも受け取る(メタデータだけの変化は読み取り課金されない)。
+let campaignsSynced = false;
+
 function initCampaigns() {
-  onSnapshot(collection(db, 'ukoAuctionCampaigns'), (snap) => {
-    latestCampaigns = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-    renderCampaignBanner();
-  }, (err) => console.error('[auction] campaigns listen failed', err));
+  listenWhileVisible(() => {
+    campaignsSynced = false;
+    return onSnapshot(collection(db, 'ukoAuctionCampaigns'), { includeMetadataChanges: true }, (snap) => {
+      latestCampaigns = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+      renderCampaignBanner();
+      if (!snap.metadata.fromCache && !campaignsSynced) {
+        campaignsSynced = true;
+        settleExpiredListings();
+      }
+    }, (err) => console.error('[auction] campaigns listen failed', err));
+  });
 }
 
 function isCampaignActive(c) {
@@ -349,7 +364,9 @@ const settleAttemptedAt = new Map(); // listingId → 最後に精算を試み�
 let settleQueueRunning = false;
 
 async function settleExpiredListings() {
-  if (settleQueueRunning) return;
+  // タブ裏で購読を止めている間は一覧もキャンペーンも古いので精算しない(表で開いている
+  // 他の人に任せる)。キャンペーンをサーバーから受け取る前も、ボーナス判定を誤らないよう待つ
+  if (settleQueueRunning || isListeningPaused() || !campaignsSynced) return;
   settleQueueRunning = true;
   try {
     // latestListingsはendsAt昇順なので、他タブとも同じ順番で処理することになり、
@@ -584,13 +601,13 @@ function syncMyBidListeners() {
 
   wanted.forEach((id) => {
     if (myBidListenerUnsubs.has(id)) return;
-    const unsub = onSnapshot(doc(db, 'ukoMarketListings', id), (snap) => {
+    const unsub = listenWhileVisible(() => onSnapshot(doc(db, 'ukoMarketListings', id), (snap) => {
       if (snap.exists()) myBidListingsData.set(id, { id, ...snap.data() });
       else myBidListingsData.delete(id);
       updateMyBidsBadge();
       renderAuctionList(latestListings);
       if (myBidsModalOpen) renderMyBidsList();
-    }, (err) => console.error('[auction] my-bid listen failed', id, err));
+    }, (err) => console.error('[auction] my-bid listen failed', id, err)));
     myBidListenerUnsubs.set(id, unsub);
   });
 }
@@ -601,7 +618,7 @@ let myCardBacks = {};
 
 function initMyBidsTracking() {
   const myUserId = getUserId();
-  onSnapshot(doc(db, 'omikujiUsers', myUserId), (snap) => {
+  listenWhileVisible(() => onSnapshot(doc(db, 'omikujiUsers', myUserId), (snap) => {
     const data = snap.exists() ? snap.data() : {};
     myBidListingIds = data.myBids || [];
     myCardBacks = data.cardBacks || {};
@@ -609,7 +626,7 @@ function initMyBidsTracking() {
     updateMyBidsBadge();
     renderAuctionList(latestListings);
     if (myBidsModalOpen) renderMyBidsList();
-  }, (err) => console.error('[auction] myBids listen failed', err));
+  }, (err) => console.error('[auction] myBids listen failed', err)));
 }
 
 function updateMyBidsBadge() {
@@ -1216,14 +1233,14 @@ function initAuctionList() {
     where('status', '==', 'active'),
     orderBy('endsAt', 'asc')
   );
-  onSnapshot(q, (snap) => {
+  listenWhileVisible(() => onSnapshot(q, (snap) => {
     latestListings = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
     renderAuctionList(latestListings);
     // 検索条件に関係なく全件(latestListings)を対象にする。画面に出ていない期限切れ
     // 出品も、誰かがサイトを開いていればちゃんと精算される
     settleExpiredListings();
     updateListingCount();
-  }, (err) => console.error('[auction] listen failed', err));
+  }, (err) => console.error('[auction] listen failed', err)));
 
   // 残り時間はFirestoreの更新が無い限り再描画されないため、定期的に描き直して
   // 「残り○分」の表示を更新する(期限切れの精算トリガーもここで一緒に効く)
