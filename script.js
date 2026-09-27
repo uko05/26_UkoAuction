@@ -333,6 +333,42 @@ function hasActiveSettlementCampaign() {
 // 「集計メール送信」でキャンペーン終了後にまとめて送るメール経由(受け取る操作で
 // 付与)に一本化した。理由: 出品/落札した瞬間に増額分だけ即もらえてしまうと、
 // 「キャンペーンのボーナスは終了後メールで」という他の3種と扱いがバラバラになるため。
+// 期限切れ出品の精算キュー(2026-09-27追加)。以前は描画(renderAuctionList)のたびに
+// 期限切れ全件のsettleListingを同時に投げていたため、入札中の出品ごとの購読や検索入力で
+// 描画が走るたびに同じ出品の精算が何重にも並列実行され、同じ出品者のomikujiUsersを
+// 取り合ってトランザクションが衝突→自動リトライ、を繰り返して読み取りが1日数百万件に
+// 膨らんでいた。精算のルール自体は変えず、呼び方だけを次のように絞る:
+// ・呼ぶのは出品一覧の購読更新時と30秒ごとのタイマーだけ(描画とは切り離す)
+// ・1タブ内では1件ずつ順番に処理し、同じ出品を同時に2回精算しに行かない
+// ・一度試した出品はSETTLE_RETRY_COOLDOWN_MSの間は再試行しない(成功すればstatusが
+//   変わって購読から外れるので、残るのは失敗した場合だけ)
+// 他のタブ・他の人と同時に精算しに行くことはあり得るが、その場合もトランザクション内で
+// status==='active'を確認しているので二重精算にはならない(従来と同じ)。
+const SETTLE_RETRY_COOLDOWN_MS = 60 * 1000;
+const settleAttemptedAt = new Map(); // listingId → 最後に精算を試みた時刻
+let settleQueueRunning = false;
+
+async function settleExpiredListings() {
+  if (settleQueueRunning) return;
+  settleQueueRunning = true;
+  try {
+    // latestListingsはendsAt昇順なので、他タブとも同じ順番で処理することになり、
+    // 先に誰かが精算した出品は再読込でstatusを見てすぐ抜けられる
+    for (;;) {
+      const now = Date.now();
+      const next = latestListings.find((l) => (
+        l.endsAt && l.endsAt.toMillis() <= now
+        && now - (settleAttemptedAt.get(l.id) || 0) >= SETTLE_RETRY_COOLDOWN_MS
+      ));
+      if (!next) break;
+      settleAttemptedAt.set(next.id, now);
+      await settleListing(next.id);
+    }
+  } finally {
+    settleQueueRunning = false;
+  }
+}
+
 async function settleListing(listingId) {
   const ref = doc(db, 'ukoMarketListings', listingId);
   try {
@@ -1079,14 +1115,6 @@ function renderAuctionList(rawListings) {
   if (!listEl) return;
   const myUserId = getUserId();
 
-  // 期限切れの精算トリガーは検索条件に関係なく全件(rawListings)に対して行う。
-  // 表示側は後で検索・ページ単位に絞るので、検索でたまたま絞り込まれて
-  // 画面に出ていない期限切れ出品も誰かがサイトを開いた時点でちゃんと精算される。
-  rawListings.forEach((listing) => {
-    const isExpired = listing.endsAt && listing.endsAt.toMillis() <= Date.now();
-    if (isExpired) settleListing(listing.id);
-  });
-
   const listings = sortListings(filterListings(rawListings));
   const mode = getViewMode();
   listEl.className = mode === 'grid' ? 'auction-list-grid' : 'auction-list';
@@ -1191,6 +1219,9 @@ function initAuctionList() {
   onSnapshot(q, (snap) => {
     latestListings = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
     renderAuctionList(latestListings);
+    // 検索条件に関係なく全件(latestListings)を対象にする。画面に出ていない期限切れ
+    // 出品も、誰かがサイトを開いていればちゃんと精算される
+    settleExpiredListings();
     updateListingCount();
   }, (err) => console.error('[auction] listen failed', err));
 
@@ -1198,6 +1229,7 @@ function initAuctionList() {
   // 「残り○分」の表示を更新する(期限切れの精算トリガーもここで一緒に効く)
   setInterval(() => {
     renderAuctionList(latestListings);
+    settleExpiredListings();
   }, 30000);
 
   const bidClose = document.getElementById('auction-bid-close');
