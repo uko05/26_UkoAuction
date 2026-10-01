@@ -78,6 +78,8 @@ const i18n = {
     empty: '出品されているアイテムはありません',
     emptySearch: '該当するアイテムが見つかりませんでした',
     searchPlaceholder: 'アイテム名で検索',
+    mineOnly: '自分の出品だけ表示',
+    myListingCount: (n, max) => `あなたの出品中 ${n} / ${max}件`,
     startLabel: '開始',
     currentLabel: '現在',
     noBid: 'まだ入札なし',
@@ -142,6 +144,8 @@ const i18n = {
     empty: 'No items are currently listed',
     emptySearch: 'No items matched your search',
     searchPlaceholder: 'Search by item name',
+    mineOnly: 'Show only my listings',
+    myListingCount: (n, max) => `Your listings: ${n} / ${max}`,
     startLabel: 'Start',
     currentLabel: 'Current',
     noBid: 'No bids yet',
@@ -219,6 +223,7 @@ function applyLang(lang) {
   localStorage.setItem('lang', lang);
   renderAuctionList(latestListings);
   updateListingCount();
+  updateMyListingCount();
   renderCampaignBanner();
 }
 
@@ -844,10 +849,40 @@ let deepLinkHandled = false;
 // 対してフィルタする。ページングはフィルタ後の件数で再計算されるので、
 // 検索すると自動的に1ページ目から見せる(input側でauctionCurrentPageをリセットする)。
 let auctionSearchQuery = '';
+// 「自分の出品だけ表示」(2026-10-02追加)
+let auctionMineOnly = false;
+// 1人が同時に出品できる件数の上限。14_GenshinOmikuji/auction.js の MAX_ACTIVE_LISTINGS_PER_USER、
+// 24_AccountCenter/functions/auctionLimit.js と同じ値にすること
+const MAX_ACTIVE_LISTINGS_PER_USER = 50;
 function filterListings(listings) {
-  if (!auctionSearchQuery) return listings;
+  let out = listings;
+  if (auctionMineOnly) {
+    const myUserId = getUserId();
+    out = out.filter((l) => l.sellerId === myUserId);
+  }
+  if (!auctionSearchQuery) return out;
   const q = auctionSearchQuery.toLowerCase();
-  return listings.filter((l) => (l.itemName || '').toLowerCase().includes(q));
+  return out.filter((l) => (l.itemName || '').toLowerCase().includes(q));
+}
+
+// 「自分の出品だけ表示」の切り替えと、自分の出品中の件数(全件を購読済みなので数えるだけ)
+function initMineToggle() {
+  const cb = document.getElementById('auction-mine-only');
+  if (!cb) return;
+  cb.addEventListener('change', () => {
+    auctionMineOnly = cb.checked;
+    auctionCurrentPage = 1;
+    renderAuctionList(latestListings);
+    updateListingCount();
+  });
+}
+function updateMyListingCount() {
+  const el = document.getElementById('auction-my-listing-count');
+  if (!el) return;
+  const myUserId = getUserId();
+  const n = latestListings.filter((l) => l.sellerId === myUserId).length;
+  el.textContent = s().myListingCount(n, MAX_ACTIVE_LISTINGS_PER_USER);
+  el.classList.toggle('at-limit', n >= MAX_ACTIVE_LISTINGS_PER_USER);
 }
 function initSearchInput() {
   const input = document.getElementById('auction-search-input');
@@ -1240,6 +1275,7 @@ function initAuctionList() {
     // 出品も、誰かがサイトを開いていればちゃんと精算される
     settleExpiredListings();
     updateListingCount();
+    updateMyListingCount();
   }, (err) => console.error('[auction] listen failed', err)));
 
   // 残り時間はFirestoreの更新が無い限り再描画されないため、定期的に描き直して
@@ -1277,6 +1313,7 @@ function initAuctionList() {
   initSortSelect();
   initViewToggle();
   initSearchInput();
+  initMineToggle();
 }
 
 initLangSwitch();

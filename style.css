@@ -102,6 +102,29 @@ main {
   box-sizing: border-box;
 }
 
+.auction-mine-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 10px;
+  font-size: 0.78rem;
+}
+.auction-mine-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+}
+.auction-my-listing-count {
+  color: var(--muted);
+}
+.auction-my-listing-count.at-limit {
+  color: #dc2626;
+  font-weight: bold;
+}
+
 .auction-sort-row {
   display: flex;
   align-items: center;
