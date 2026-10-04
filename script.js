@@ -294,7 +294,6 @@ function initCampaigns() {
       renderCampaignBanner();
       if (!snap.metadata.fromCache && !campaignsSynced) {
         campaignsSynced = true;
-        settleExpiredListings();
       }
     }, (err) => console.error('[auction] campaigns listen failed', err));
   });
@@ -1271,18 +1270,16 @@ function initAuctionList() {
   listenWhileVisible(() => onSnapshot(q, (snap) => {
     latestListings = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
     renderAuctionList(latestListings);
-    // 検索条件に関係なく全件(latestListings)を対象にする。画面に出ていない期限切れ
-    // 出品も、誰かがサイトを開いていればちゃんと精算される
-    settleExpiredListings();
+    // 期限切れの精算は2026-10-04からサーバー(24_AccountCenter/functions/auctionSettle.js、5分おき)が
+    // 行う。以前は開いている人のブラウザ全員が同じ出品を精算しに行き、読み取りが人数分ふくらんでいた
     updateListingCount();
     updateMyListingCount();
   }, (err) => console.error('[auction] listen failed', err)));
 
   // 残り時間はFirestoreの更新が無い限り再描画されないため、定期的に描き直して
-  // 「残り○分」の表示を更新する(期限切れの精算トリガーもここで一緒に効く)
+  // 「残り○分」の表示を更新する
   setInterval(() => {
     renderAuctionList(latestListings);
-    settleExpiredListings();
   }, 30000);
 
   const bidClose = document.getElementById('auction-bid-close');
