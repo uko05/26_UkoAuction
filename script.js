@@ -8,7 +8,7 @@ import { app, db } from './firebaseConfig.js';
 import { listenWhileVisible, isListeningPaused } from './visibleListener.js';
 import {
   collection, doc, getDoc, onSnapshot, runTransaction,
-  query, where, orderBy, increment, serverTimestamp, arrayUnion,
+  query, where, orderBy, increment, serverTimestamp, arrayUnion, limit, getCountFromServer,
 } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
 
 // UP取得履歴(管理者画面「UP取得履歴」用の監査ログ、2026-09-19追加)。ukoPointsを
@@ -871,17 +871,33 @@ function initMineToggle() {
   cb.addEventListener('change', () => {
     auctionMineOnly = cb.checked;
     auctionCurrentPage = 1;
+    ensureListMode();
     renderAuctionList(latestListings);
     updateListingCount();
   });
 }
-function updateMyListingCount() {
+let myListingCountCache = null;
+let myListingCountAt = 0;
+function renderMyListingCount(n) {
   const el = document.getElementById('auction-my-listing-count');
-  if (!el) return;
-  const myUserId = getUserId();
-  const n = latestListings.filter((l) => l.sellerId === myUserId).length;
+  if (!el || n === null) return;
   el.textContent = s().myListingCount(n, MAX_ACTIVE_LISTINGS_PER_USER);
   el.classList.toggle('at-limit', n >= MAX_ACTIVE_LISTINGS_PER_USER);
+}
+function updateMyListingCount() {
+  const myUserId = getUserId();
+  if (fullMode) {
+    renderMyListingCount(latestListings.filter((l) => l.sellerId === myUserId).length);
+    return;
+  }
+  // 少しずつ読んでいる時は全件が手元に無いので、件数だけ数える(読み取り1回分、1分に1回まで)
+  renderMyListingCount(myListingCountCache);
+  if (Date.now() - myListingCountAt < 60 * 1000) return;
+  myListingCountAt = Date.now();
+  getCountFromServer(query(collection(db, 'ukoMarketListings'),
+    where('sellerId', '==', myUserId), where('status', '==', 'active')))
+    .then((snap) => { myListingCountCache = snap.data().count; renderMyListingCount(myListingCountCache); })
+    .catch((e) => console.error('[auction] my listing count failed', e));
 }
 function initSearchInput() {
   const input = document.getElementById('auction-search-input');
@@ -889,6 +905,7 @@ function initSearchInput() {
   input.addEventListener('input', () => {
     auctionSearchQuery = input.value.trim();
     auctionCurrentPage = 1;
+    ensureListMode();
     renderAuctionList(latestListings);
     updateListingCount();
   });
@@ -947,6 +964,7 @@ function initSortSelect() {
   select.addEventListener('change', () => {
     localStorage.setItem(AUCTION_SORT_KEY, select.value);
     auctionCurrentPage = 1;
+    ensureListMode();
     renderAuctionList(latestListings);
     updateListingCount();
   });
@@ -1180,7 +1198,8 @@ function renderAuctionList(rawListings) {
     return;
   }
 
-  const totalPages = Math.max(1, Math.ceil(listings.length / AUCTION_PAGE_SIZE));
+  const totalCount = fullMode ? listings.length : Math.max(listings.length, activeTotal || 0);
+  const totalPages = Math.max(1, Math.ceil(totalCount / AUCTION_PAGE_SIZE));
   auctionCurrentPage = Math.min(Math.max(1, auctionCurrentPage), totalPages);
   const pageStart = (auctionCurrentPage - 1) * AUCTION_PAGE_SIZE;
   const pageListings = listings.slice(pageStart, pageStart + AUCTION_PAGE_SIZE);
@@ -1217,6 +1236,11 @@ function renderAuctionList(rawListings) {
     nextBtn.disabled = auctionCurrentPage >= totalPages;
     nextBtn.addEventListener('click', () => {
       auctionCurrentPage += 1;
+      // 少しずつ読んでいる時、まだ読んでいないページなら、そのページまで読み足す
+      if (!fullMode && auctionCurrentPage > loadedPages) {
+        loadedPages = auctionCurrentPage;
+        subscribeListings();
+      }
       renderAuctionList(latestListings);
       updateListingCount();
       scrollToAuctionList();
@@ -1233,6 +1257,16 @@ function renderAuctionList(rawListings) {
   const wantedListingId = new URLSearchParams(location.search).get('listing');
   if (wantedListingId && !deepLinkHandled) {
     const wanted = listings.find((l) => l.id === wantedListingId);
+    if (!wanted && !fullMode && !deepLinkFetching) {
+      deepLinkFetching = true;
+      getDoc(doc(db, 'ukoMarketListings', wantedListingId)).then((snap) => {
+        if (!snap.exists() || snap.data().status !== 'active') return;
+        deepLinkHandled = true;
+        const l = { id: snap.id, ...snap.data() };
+        if (l.sellerId === myUserId) return;
+        isLoggedIn().then((ok) => { if (ok) openBidModal(l); else showToast(s().loginRequired, true); });
+      }).catch((e) => console.error('[auction] deep link fetch failed', e));
+    }
     if (wanted && wanted.sellerId !== myUserId) {
       deepLinkHandled = true;
       isLoggedIn().then((ok) => {
@@ -1251,30 +1285,59 @@ function renderAuctionList(rawListings) {
 function updateListingCount() {
   const el = document.getElementById('auction-listing-count');
   if (!el) return;
-  const count = filterListings(latestListings).length;
+  const count = fullMode ? filterListings(latestListings).length : (activeTotal ?? latestListings.length);
   const base = s().listingCount(count);
   const totalPages = Math.max(1, Math.ceil(count / AUCTION_PAGE_SIZE));
   el.textContent = totalPages > 1 ? base + s().listingCountPageSuffix(auctionCurrentPage, totalPages) : base;
 }
 
 // ===== 初期化 =====
-function initAuctionList() {
-  // limit()を付けない(2026-09-20、上のコメント参照)。アクティブな出品を1件も
-  // 漏らさず取得する(件数が増えるほど読み込みコストは上がるが、ページ送り表示自体は
-  // AUCTION_PAGE_SIZE単位のままなので描画は変わらず軽い)。
-  const q = query(
-    collection(db, 'ukoMarketListings'),
-    where('status', '==', 'active'),
-    orderBy('endsAt', 'asc')
-  );
-  listenWhileVisible(() => onSnapshot(q, (snap) => {
+// ===== 出品一覧の読み方(2026-10-07、読み取り削減) =====
+// 以前は開くたびに出品中の全件(約500件)を読んでいた。今は既定の表示(残り時間が短い順・検索なし・
+// 自分の出品だけ表示オフ)では、見ているページまで(50件ずつ)だけを読む。並べ替えを変えた・検索した・
+// 自分の出品だけ表示にした時は、全件が必要なので全件を読む(fullMode)。
+// 期限切れの精算は2026-10-04からサーバー(24_AccountCenter/functions/auctionSettle.js、5分おき)が行う。
+let fullMode = false;
+let loadedPages = 1;
+let activeTotal = null;       // 出品中の総数(少しずつ読む時のページ数・件数表示用)
+let activeTotalAt = 0;
+let unsubscribeListings = null;
+let deepLinkFetching = false;
+
+function needsFullMode() {
+  return getSortMode() !== 'endingSoon' || !!auctionSearchQuery || auctionMineOnly;
+}
+function ensureListMode() {
+  const want = needsFullMode();
+  if (want !== fullMode) {
+    fullMode = want;
+    loadedPages = Math.max(1, auctionCurrentPage);
+    subscribeListings();
+  }
+}
+function refreshActiveTotal() {
+  if (fullMode || Date.now() - activeTotalAt < 60 * 1000) return;
+  activeTotalAt = Date.now();
+  getCountFromServer(query(collection(db, 'ukoMarketListings'), where('status', '==', 'active')))
+    .then((snap) => { activeTotal = snap.data().count; renderAuctionList(latestListings); updateListingCount(); })
+    .catch((e) => console.error('[auction] count failed', e));
+}
+function subscribeListings() {
+  if (unsubscribeListings) unsubscribeListings();
+  const base = [collection(db, 'ukoMarketListings'), where('status', '==', 'active'), orderBy('endsAt', 'asc')];
+  const q = fullMode ? query(...base) : query(...base, limit(AUCTION_PAGE_SIZE * loadedPages));
+  unsubscribeListings = listenWhileVisible(() => onSnapshot(q, (snap) => {
     latestListings = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+    refreshActiveTotal();
     renderAuctionList(latestListings);
-    // 期限切れの精算は2026-10-04からサーバー(24_AccountCenter/functions/auctionSettle.js、5分おき)が
-    // 行う。以前は開いている人のブラウザ全員が同じ出品を精算しに行き、読み取りが人数分ふくらんでいた
     updateListingCount();
     updateMyListingCount();
   }, (err) => console.error('[auction] listen failed', err)));
+}
+
+function initAuctionList() {
+  fullMode = needsFullMode();
+  subscribeListings();
 
   // 残り時間はFirestoreの更新が無い限り再描画されないため、定期的に描き直して
   // 「残り○分」の表示を更新する
