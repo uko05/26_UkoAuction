@@ -852,7 +852,7 @@ let auctionSearchQuery = '';
 let auctionMineOnly = false;
 // 1人が同時に出品できる件数の上限。14_GenshinOmikuji/auction.js の MAX_ACTIVE_LISTINGS_PER_USER、
 // 24_AccountCenter/functions/auctionLimit.js と同じ値にすること
-const MAX_ACTIVE_LISTINGS_PER_USER = 50;
+const MAX_ACTIVE_LISTINGS_PER_USER = 30; // 2026-10-07に50→30
 function filterListings(listings) {
   let out = listings;
   if (auctionMineOnly) {
