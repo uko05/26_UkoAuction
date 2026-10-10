@@ -7,7 +7,7 @@
 import { app, db } from './firebaseConfig.js';
 import { listenWhileVisible, isListeningPaused } from './visibleListener.js';
 import {
-  collection, doc, runTransaction, query, where, orderBy, increment, serverTimestamp, arrayUnion, limit,
+  collection, doc, runTransaction, query, where, orderBy, increment, serverTimestamp, arrayUnion, arrayRemove, updateDoc, limit,
 } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
 import { getDoc, onSnapshot, getCountFromServer } from './fsTracked.js'; // 読み取り件数の集計(調査用、fsTracked.js参照)
 
@@ -576,6 +576,31 @@ let myBidListingIds = [];
 const myBidListingsData = new Map(); // listingId -> 最新ドキュメント(未取得ならエントリ無し)
 const myBidListenerUnsubs = new Map(); // listingId -> unsubscribe関数
 let myBidsModalOpen = false;
+// 終了を確認した出品(結果はもう変わらないので購読をやめたもの、2026-10-10追加)。
+// 以前は入札した出品を終了後もずっと個別購読していたため、入札が数百件ある人は
+// タブを切り替えるたびに数百件を張り直していた(監査ログで1人7分間に約1,400回)。
+const endedBidIds = new Set();
+// 終了してからこれ以上たった出品はmyBidsから外す(「自分の入札」一覧に出すのは直近分だけ)
+const MY_BIDS_KEEP_MS = 3 * 24 * 60 * 60 * 1000;
+const myBidsToPrune = new Set();
+let myBidsPruneTimer = null;
+
+function scheduleMyBidsPrune(id) {
+  myBidsToPrune.add(id);
+  if (myBidsPruneTimer) return;
+  // 終了済みの出品はまとめて見つかるので、少し待ってから1回の書き込みで外す
+  myBidsPruneTimer = setTimeout(async () => {
+    myBidsPruneTimer = null;
+    const ids = [...myBidsToPrune];
+    myBidsToPrune.clear();
+    if (!ids.length) return;
+    try {
+      await updateDoc(doc(db, 'omikujiUsers', getUserId()), { myBids: arrayRemove(...ids) });
+    } catch (e) {
+      console.error('[auction] myBids prune failed', e);
+    }
+  }, 3000);
+}
 
 function myBidStatus(data, myUserId) {
   if (!data) return null;
@@ -602,17 +627,32 @@ function syncMyBidListeners() {
       myBidListingsData.delete(id);
     }
   }
+  for (const id of endedBidIds) {
+    if (!wanted.has(id)) { endedBidIds.delete(id); myBidListingsData.delete(id); }
+  }
 
   wanted.forEach((id) => {
-    if (myBidListenerUnsubs.has(id)) return;
+    if (myBidListenerUnsubs.has(id) || endedBidIds.has(id)) return;
+    let endedBeforeSet = false;
     const unsub = listenWhileVisible(() => onSnapshot(doc(db, 'ukoMarketListings', id), (snap) => {
-      if (snap.exists()) myBidListingsData.set(id, { id, ...snap.data() });
+      const data = snap.exists() ? snap.data() : null;
+      if (data) myBidListingsData.set(id, { id, ...data });
       else myBidListingsData.delete(id);
+      // 終了した(または消えた)出品は結果が変わらないので、ここで購読をやめる
+      if (!data || data.status !== 'active') {
+        endedBidIds.add(id);
+        const stop = myBidListenerUnsubs.get(id);
+        myBidListenerUnsubs.delete(id);
+        if (stop) stop(); else endedBeforeSet = true;
+        const endMs = data?.endsAt?.toMillis?.() || 0;
+        if (!data || Date.now() - endMs > MY_BIDS_KEEP_MS) scheduleMyBidsPrune(id);
+      }
       updateMyBidsBadge();
       renderAuctionList(latestListings);
       if (myBidsModalOpen) renderMyBidsList();
     }, (err) => console.error('[auction] my-bid listen failed', id, err)));
-    myBidListenerUnsubs.set(id, unsub);
+    if (endedBeforeSet) unsub(); // キャッシュから即座に「終了済み」が返ってきた場合
+    else myBidListenerUnsubs.set(id, unsub);
   });
 }
 
