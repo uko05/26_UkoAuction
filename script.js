@@ -9,7 +9,7 @@ import { listenWhileVisible, isListeningPaused } from './visibleListener.js';
 import {
   collection, doc, runTransaction, query, where, orderBy, increment, serverTimestamp, arrayUnion, arrayRemove, updateDoc, limit,
 } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
-import { getDoc, onSnapshot, getCountFromServer } from './fsTracked.js'; // 読み取り件数の集計(調査用、fsTracked.js参照)
+import { getDoc, onSnapshot, getCountFromServer } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
 
 // UP取得履歴(管理者画面「UP取得履歴」用の監査ログ、2026-09-19追加)。ukoPointsを
 // 増やす箇所でこのコレクションにも1件書き込んでおくと、後から「誰が・何で・いつ・
